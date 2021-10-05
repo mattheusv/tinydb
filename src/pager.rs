@@ -71,10 +71,12 @@ impl Pager {
             .read(true)
             .write(true)
             .open(filename)?;
-        Ok(Self {
+        let mut pager = Self {
             file,
             total_pages: 0,
-        })
+        };
+        pager.total_pages = pager.size()?;
+        Ok(pager)
     }
 
     /// Read a page from file.  This pager reads a page from the file,
@@ -149,6 +151,35 @@ impl Pager {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_open_existed_database_file() -> Result<(), Error> {
+        let file = NamedTempFile::new()?;
+        {
+            // Open empty database file and create a page.
+            let mut pager = Pager::open(file.path())?;
+            let page_number = pager.allocate_page();
+            let page_data: PageData = [0; PAGE_SIZE];
+            let mem_page = MemPage {
+                number: page_number,
+                data: page_data,
+            };
+            pager.write_page(&mem_page)?;
+        }
+
+        // Open an already existed database file and create a new page.
+        let mut pager = Pager::open(file.path())?;
+        let page_number = pager.allocate_page();
+        let page_data: PageData = [0; PAGE_SIZE];
+        let mem_page = MemPage {
+            number: page_number,
+            data: page_data,
+        };
+        pager.write_page(&mem_page)?;
+
+        assert_eq!(2, pager.size()?);
+        Ok(())
+    }
 
     #[test]
     fn test_pager_size() -> Result<(), Error> {
