@@ -14,9 +14,11 @@ const HEADER_SIZE: usize = 100;
 pub const PAGE_SIZE: usize = 4096 * 4; // 8 Kb
 
 /// Header is a type that represents the array of bytes
-/// containing the header data from tinydb file.
+/// containing the header data from database file.
 pub type Header = [u8; HEADER_SIZE];
 
+/// PageData is a type that represents the array of bytes
+/// of some page in database.
 pub type PageData = [u8; PAGE_SIZE];
 
 /// Represents the type of PageNumber.
@@ -124,6 +126,11 @@ impl Pager {
         Ok(())
     }
 
+    /// Computes the number of pages in a file.
+    pub fn size(&self) -> Result<u32, Error> {
+        Ok(self.file.metadata()?.len() as u32 / PAGE_SIZE as u32)
+    }
+
     /// Check if a pager number is valid to this database file buffer.
     fn validate_page(&self, page: PageNumber) -> Result<(), Error> {
         if page > self.total_pages || page <= 0 {
@@ -142,6 +149,26 @@ impl Pager {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_pager_size() -> Result<(), Error> {
+        let mut pager = open_test_pager()?;
+        let total_pages = 20;
+
+        for i in 0..total_pages {
+            let page_number: PageNumber = pager.allocate_page();
+            let page_data: PageData = [i; PAGE_SIZE];
+            let mem_page = MemPage {
+                number: page_number,
+                data: page_data,
+            };
+            pager.write_page(&mem_page)?;
+        }
+
+        assert_eq!(total_pages as u32, pager.size()?);
+
+        Ok(())
+    }
 
     #[test]
     fn test_write_read_pages() -> Result<(), Error> {
