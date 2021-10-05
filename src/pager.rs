@@ -130,7 +130,11 @@ impl Pager {
 
     /// Computes the number of pages in a file.
     pub fn size(&self) -> Result<u32, Error> {
-        Ok(self.file.metadata()?.len() as u32 / PAGE_SIZE as u32)
+        let len = self.file.metadata()?.len();
+        if len == 0 {
+            return Ok(0);
+        }
+        Ok((len as u32 / PAGE_SIZE as u32) - HEADER_SIZE as u32)
     }
 
     /// Check if a pager number is valid to this database file buffer.
@@ -143,7 +147,8 @@ impl Pager {
 
     /// Returns the offset on database file where a Page start given a page number.
     fn offset(&self, page: PageNumber) -> u64 {
-        (page - 1) as u64 * PAGE_SIZE as u64
+        // Start reading pages after pager header; pages start reading at 0.
+        (HEADER_SIZE as u32 + page - 1) as u64 * PAGE_SIZE as u64
     }
 }
 
@@ -151,6 +156,25 @@ impl Pager {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_first_page_not_override_header() -> Result<(), Error> {
+        let mut pager = open_test_pager()?;
+        let header = [10; HEADER_SIZE];
+        pager.write_header(&header)?;
+
+        let page_number = pager.allocate_page();
+        let mem_page = MemPage {
+            data: [1; PAGE_SIZE],
+            number: page_number,
+        };
+        pager.write_page(&mem_page)?;
+
+        assert_eq!(header, pager.read_header()?);
+        assert_eq!(mem_page, pager.read_page(page_number)?);
+
+        Ok(())
+    }
 
     #[test]
     fn test_open_existed_database_file() -> Result<(), Error> {
