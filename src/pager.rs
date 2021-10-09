@@ -96,6 +96,14 @@ impl Header {
     }
 }
 
+impl Default for Header {
+    fn default() -> Self {
+        Self {
+            magic: MAGIC_BYTES.clone(),
+        }
+    }
+}
+
 /// Represents a in-memory copy of page.
 #[derive(Debug, PartialEq)]
 pub struct MemPage {
@@ -120,7 +128,12 @@ pub struct Pager {
 }
 
 impl Pager {
-    /// Opens a file for paged access.
+    /// Open a file for paged access.
+    ///
+    /// This function opens a database file and verifies that the file
+    /// header is correct. If the file is empty (which will happen if the
+    /// pager is given a filename for a file that does not exist) then this
+    /// function will initialize the file header using the default values.
     pub fn open(filename: &Path) -> Result<Self, Error> {
         let file = OpenOptions::new()
             .create(true)
@@ -132,6 +145,12 @@ impl Pager {
             total_pages: 0,
         };
         pager.total_pages = pager.size()?;
+
+        if pager.is_empty()? {
+            pager.initialize_header()?;
+        } else {
+            pager.validate_header()?;
+        }
         Ok(pager)
     }
 
@@ -173,14 +192,7 @@ impl Pager {
         self.file.seek(SeekFrom::Start(0))?;
         let mut header = [0; HEADER_SIZE];
         self.file.read(&mut header)?;
-        let header = Header::deserialize(&header)?;
-
-        // TODO: This is right? Seems not.
-        if header.magic != MAGIC_BYTES.clone() {
-            return Err(Error::CorruptedFile);
-        }
-
-        Ok(header)
+        Header::deserialize(&header)
     }
 
     /// Write the header on database file. Note that the write_header function will
@@ -194,9 +206,16 @@ impl Pager {
     /// Computes the number of pages in a file.
     pub fn size(&self) -> Result<u32, Error> {
         let len = self.file.metadata()?.len();
-        if len == 0 {
+        if len == 0 || len as usize - HEADER_SIZE == 0 {
+            // If len is equal 0 means that the file is empty.
+            // If len - HEADER_SIZE is equal 0 means that the
+            // file doest not have any page, so in both case
+            // return 0.
             return Ok(0);
         }
+        // Otherwise we calculate the total of
+        // pages in file and finally substract with the
+        // HEADER_SIZE to get the total of pages in file.
         Ok((len as u32 / PAGE_SIZE as u32) - HEADER_SIZE as u32)
     }
 
@@ -213,6 +232,28 @@ impl Pager {
         // Start reading pages after pager header; pages start reading at 0.
         (HEADER_SIZE as u32 + page - 1) as u64 * PAGE_SIZE as u64
     }
+
+    /// Check if file buffer is empty.
+    fn is_empty(&self) -> Result<bool, Error> {
+        Ok(self.file.metadata()?.len() == 0)
+    }
+
+    /// Check if the header data is valid on disk.
+    fn validate_header(&mut self) -> Result<(), Error> {
+        let header = self.read_header()?;
+
+        // TODO: This is right? Seems not.
+        if header.magic != MAGIC_BYTES.clone() {
+            return Err(Error::CorruptedFile);
+        }
+
+        Ok(())
+    }
+
+    /// Initialize the default header values.
+    fn initialize_header(&mut self) -> Result<(), Error> {
+        self.write_header(&Header::default())
+    }
 }
 
 #[cfg(test)]
@@ -223,11 +264,6 @@ mod tests {
     #[test]
     fn test_first_page_not_override_header() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
-        let header = Header {
-            magic: MAGIC_BYTES.clone(),
-        };
-        pager.write_header(&header)?;
-
         let page_number = pager.allocate_page();
         let mem_page = MemPage {
             data: [1; PAGE_SIZE],
@@ -235,7 +271,7 @@ mod tests {
         };
         pager.write_page(&mem_page)?;
 
-        assert_eq!(header, pager.read_header()?);
+        assert_eq!(pager.read_header()?, Header::default());
         assert_eq!(mem_page, pager.read_page(page_number)?);
 
         Ok(())
@@ -325,25 +361,18 @@ mod tests {
 
     #[test]
     fn test_read_corrupted_header() -> Result<(), Error> {
-        let mut pager = open_test_pager()?;
-        let result = pager.read_header();
-        assert_eq!(result, Err(Error::CorruptedFile));
+        let mut file = NamedTempFile::new()?;
+        file.write(&[0; HEADER_SIZE])?;
+        let result = Pager::open(file.path());
+        assert!(matches!(result, Err(Error::CorruptedFile)));
         Ok(())
     }
 
     #[test]
-    fn test_write_header() -> Result<(), Error> {
+    fn test_open_new_pager() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
-
-        let header = Header {
-            magic: MAGIC_BYTES.clone(),
-        };
-
-        pager.write_header(&header)?;
-        let readed_header = pager.read_header()?;
-
-        assert_eq!(header, readed_header);
-
+        let header = pager.read_header()?;
+        assert_eq!(header, Header::default());
         Ok(())
     }
 
