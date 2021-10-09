@@ -137,8 +137,8 @@ impl Pager {
 
     /// Read a page from file.  This pager reads a page from the file,
     /// and creates an in-memory copy in a MemPage struct. Any changes
-    /// done to a MemPage will not be effective until you call
-    /// write_0age with that MemPage.
+    /// done to a MemPage will not be effective until call the
+    /// [write_page](Pager::write_page] with that MemPage.
     pub fn read_page(&mut self, page: PageNumber) -> Result<MemPage, Error> {
         self.validate_page(page)?;
         self.file.seek(SeekFrom::Start(self.offset(page)))?;
