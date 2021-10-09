@@ -1,4 +1,6 @@
 use log::debug;
+use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
 use std::io::{
     self,
@@ -13,9 +15,15 @@ const HEADER_SIZE: usize = 100;
 /// Represents the size that a Page can have on database file.
 pub const PAGE_SIZE: usize = 4096 * 4; // 8 Kb
 
-/// Header is a type that represents the array of bytes
+/// Represents the first N bytes of the file.
+pub const MAGIC_BYTES_SIZE: usize = 6;
+
+/// Represents the first [MAGIC_BYTES_SIZE] of file.
+pub const MAGIC_BYTES: &[u8; MAGIC_BYTES_SIZE] = b"Tinydb";
+
+/// HeaderData is a type that represents the array of bytes
 /// containing the header data from database file.
-pub type Header = [u8; HEADER_SIZE];
+pub type HeaderData = [u8; HEADER_SIZE];
 
 /// PageData is a type that represents the array of bytes
 /// of some page in database.
@@ -32,11 +40,59 @@ pub enum Error {
 
     /// Represents I/O related errors.
     IO(io::ErrorKind),
+
+    /// The database file is corrupted. Mostly the magic bytes
+    /// is different than [MAGIC_BYTES].
+    CorruptedFile,
+
+    /// Could not convert a type to bytes representation.
+    Serialize(String),
+
+    /// Could not convert a raw of bytes to a type.
+    Deserialize(String),
 }
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
         Self::IO(err.kind())
+    }
+}
+
+/// A in memory representation of a pager file header.
+///
+/// Note that Header instances are in-memory copy of current
+/// page header data, if change was made is necessary to write
+/// back to disk using [write_header](Pager::write_header) function.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct Header {
+    magic: [u8; MAGIC_BYTES_SIZE],
+}
+
+impl Header {
+    /// Return the fixed size byte representation of header file.
+    ///
+    /// Note that if [Header] size is less than [HEADER_SIZE] the
+    /// bytes data will be resized and 0 values will be added in
+    /// the end of array. If [Header] size is greater thatn [HEADER_SZIE]
+    /// the function will panic. Truncate the slice can't be done because
+    /// can lost values and generate bugs.
+    pub fn serialize(&self) -> Result<HeaderData, Error> {
+        let mut data = bincode::serialize(self).map_err(|err| Error::Serialize(err.to_string()))?;
+        if data.len() < HEADER_SIZE {
+            data.resize(HEADER_SIZE, 0);
+        }
+        Ok(data.try_into().unwrap_or_else(|v: Vec<u8>| {
+            panic!(
+                "Expected a Header of length {} but it was {}",
+                HEADER_SIZE,
+                v.len()
+            )
+        }))
+    }
+
+    /// Convert a fixed size byte array to Header.
+    pub fn deserialize(data: &HeaderData) -> Result<Self, Error> {
+        bincode::deserialize(data).map_err(|err| Error::Deserialize(err.to_string()))
     }
 }
 
@@ -117,6 +173,13 @@ impl Pager {
         self.file.seek(SeekFrom::Start(0))?;
         let mut header = [0; HEADER_SIZE];
         self.file.read(&mut header)?;
+        let header = Header::deserialize(&header)?;
+
+        // TODO: This is right? Seems not.
+        if header.magic != MAGIC_BYTES.clone() {
+            return Err(Error::CorruptedFile);
+        }
+
         Ok(header)
     }
 
@@ -124,7 +187,7 @@ impl Pager {
     /// always override the current header data if exists.
     pub fn write_header(&mut self, header: &Header) -> Result<(), Error> {
         self.file.seek(SeekFrom::Start(0))?;
-        self.file.write(header)?;
+        self.file.write(&header.serialize()?)?;
         Ok(())
     }
 
@@ -160,7 +223,9 @@ mod tests {
     #[test]
     fn test_first_page_not_override_header() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
-        let header = [10; HEADER_SIZE];
+        let header = Header {
+            magic: MAGIC_BYTES.clone(),
+        };
         pager.write_header(&header)?;
 
         let page_number = pager.allocate_page();
@@ -259,10 +324,10 @@ mod tests {
     }
 
     #[test]
-    fn test_read_header() -> Result<(), Error> {
+    fn test_read_corrupted_header() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
-        let header = pager.read_header()?;
-        assert_eq!(header, [0; HEADER_SIZE], "Expected empty header");
+        let result = pager.read_header();
+        assert_eq!(result, Err(Error::CorruptedFile));
         Ok(())
     }
 
@@ -270,7 +335,9 @@ mod tests {
     fn test_write_header() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
 
-        let header = [1; HEADER_SIZE];
+        let header = Header {
+            magic: MAGIC_BYTES.clone(),
+        };
 
         pager.write_header(&header)?;
         let readed_header = pager.read_header()?;
