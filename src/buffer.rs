@@ -8,6 +8,8 @@ pub type FrameID = u32;
 // The current implementation does not perform well.
 // All FrameIDs is stored in a Vec and when pin is called is
 // necessary to iterate over all FrameIDs to remove it.
+//
+// TODO: Make this implementation thread safe.
 pub struct LruReplacer {
     elements: Vec<FrameID>,
 }
