@@ -21,6 +21,9 @@ pub const MAGIC_BYTES_SIZE: usize = 6;
 /// Represents the first [MAGIC_BYTES_SIZE] of file.
 pub const MAGIC_BYTES: &[u8; MAGIC_BYTES_SIZE] = b"Tinydb";
 
+/// Represents that a MemPage doest not exists on disk.
+const INVALID_PAGE_NUMBER: PageNumber = 1;
+
 /// HeaderData is a type that represents the array of bytes
 /// containing the header data from database file.
 pub type HeaderData = [u8; HEADER_SIZE];
@@ -114,6 +117,23 @@ pub struct MemPage {
     pub data: PageData,
 }
 
+impl MemPage {
+    /// Set number and data to current MemPage.
+    fn set(&mut self, number: PageNumber, data: PageData) {
+        self.number = number;
+        self.data = data;
+    }
+}
+
+impl Default for MemPage {
+    fn default() -> Self {
+        Self {
+            number: INVALID_PAGE_NUMBER,
+            data: [0; PAGE_SIZE],
+        }
+    }
+}
+
 /// Pager handle all read/write operations on database file.
 ///
 /// If you want to modify the file, you need to modify the page returned by
@@ -154,17 +174,18 @@ impl Pager {
         Ok(pager)
     }
 
-    /// Read a page from file.  This pager reads a page from the file,
-    /// and creates an in-memory copy in a MemPage struct. Any changes
-    /// done to a MemPage will not be effective until call the
-    /// [write_page](Pager::write_page] with that MemPage.
-    pub fn read_page(&mut self, page: PageNumber) -> Result<MemPage, Error> {
-        self.validate_page(page)?;
-        self.file.seek(SeekFrom::Start(self.offset(page)))?;
+    /// Read a page from file.  This pager reads a page from the disk,
+    /// and updates the in-memory MemPage struct passed on page arg.
+    /// Any changes done to a MemPage will not be effective until call
+    /// the [write_page](Pager::write_page] with that MemPage.
+    pub fn read_page(&mut self, page_number: PageNumber, page: &mut MemPage) -> Result<(), Error> {
+        self.validate_page(page_number)?;
+        self.file.seek(SeekFrom::Start(self.offset(page_number)))?;
         let mut data: PageData = [0; PAGE_SIZE];
         let count = self.file.read(&mut data)?;
-        debug!("Read {} bytes from page {}", count, page);
-        Ok(MemPage { data, number: page })
+        debug!("Read {} bytes from page {}", count, page_number);
+        page.set(page_number, data);
+        Ok(())
     }
 
     /// Write a page to file. This pager writes the in-memory copy of a
@@ -271,8 +292,11 @@ mod tests {
         };
         pager.write_page(&mem_page)?;
 
+        let mut page = MemPage::default();
+        pager.read_page(page_number, &mut page)?;
+
         assert_eq!(pager.read_header()?, Header::default());
-        assert_eq!(mem_page, pager.read_page(page_number)?);
+        assert_eq!(mem_page, page);
 
         Ok(())
     }
@@ -343,7 +367,8 @@ mod tests {
             };
             pager.write_page(&mem_page)?;
 
-            let page = pager.read_page(page_number)?;
+            let mut page = MemPage::default();
+            pager.read_page(page_number, &mut page)?;
 
             assert_eq!(mem_page, page);
         }
@@ -354,7 +379,8 @@ mod tests {
     #[test]
     fn test_read_invalid_page() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
-        let result = pager.read_page(1);
+        let mut page = MemPage::default();
+        let result = pager.read_page(1, &mut page);
         assert_eq!(Error::IncorrectPageNumber, result.unwrap_err());
         Ok(())
     }
