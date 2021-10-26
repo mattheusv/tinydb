@@ -108,7 +108,7 @@ impl Default for Header {
 }
 
 /// Represents a in-memory copy of page.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MemPage {
     /// Represents the number of page on database file.
     pub number: PageNumber,
@@ -119,7 +119,7 @@ pub struct MemPage {
 
 impl MemPage {
     /// Set number and data to current MemPage.
-    fn set(&mut self, number: PageNumber, data: PageData) {
+    pub fn set(&mut self, number: PageNumber, data: PageData) {
         self.number = number;
         self.data = data;
     }
