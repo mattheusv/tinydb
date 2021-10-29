@@ -1,4 +1,5 @@
 use crate::pager::{self, MemPage, PageNumber, Pager};
+use log::debug;
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -143,8 +144,13 @@ impl BufferPool {
     pub fn fetch_page(&mut self, page_id: PageNumber) -> Result<Page, Error> {
         // Page exists in memory, return a reference to it.
         if let Some(idx) = self.page_map.get(&page_id) {
+            debug!("Page {} exists in memory", page_id);
             return Ok(self.page_table[*idx].clone());
         }
+        debug!(
+            "Page {} does not exists in memory, fetching from disk",
+            page_id
+        );
 
         // Page does not exists in memory. Find a free slot on page table
         // to read the page from disk.
@@ -181,7 +187,18 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_buffer_pool_fetch_page() -> Result<(), Error> {
+    fn test_buffer_pool_fetch_page_from_memory() -> Result<(), Error> {
+        let mut buffer = BufferPool::new(open_test_pager(20), 10);
+        let page_from_disk = buffer.fetch_page(5)?;
+        let page_from_memory = buffer.fetch_page(5)?;
+
+        assert_eq!(page_from_disk, page_from_memory);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_buffer_pool_fetch_page_from_disk() -> Result<(), Error> {
         let mut buffer = BufferPool::new(open_test_pager(20), 10);
         let page = buffer.fetch_page(5)?;
 
