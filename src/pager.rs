@@ -22,7 +22,7 @@ pub const MAGIC_BYTES_SIZE: usize = 6;
 pub const MAGIC_BYTES: &[u8; MAGIC_BYTES_SIZE] = b"Tinydb";
 
 /// Represents that a MemPage doest not exists on disk.
-const INVALID_PAGE_NUMBER: PageNumber = 1;
+pub const INVALID_PAGE_NUMBER: PageNumber = 0;
 
 /// HeaderData is a type that represents the array of bytes
 /// containing the header data from database file.
@@ -110,18 +110,57 @@ impl Default for Header {
 /// Represents a in-memory copy of page.
 #[derive(Debug, PartialEq, Clone)]
 pub struct MemPage {
+    /// Means if a page was changed in memory.
+    pub is_dirty: bool,
+
     /// Represents the number of page on database file.
-    pub number: PageNumber,
+    number: PageNumber,
 
     /// Represents the actual bytes data from page.
-    pub data: PageData,
+    data: PageData,
 }
 
 impl MemPage {
+    /// Creates a new in-memory page.
+    pub fn new(number: PageNumber, data: PageData) -> Self {
+        Self {
+            number,
+            data,
+            is_dirty: false,
+        }
+    }
+
     /// Set number and data to current MemPage.
     pub fn set(&mut self, number: PageNumber, data: PageData) {
         self.number = number;
         self.data = data;
+        if number != INVALID_PAGE_NUMBER {
+            self.is_dirty = true;
+        }
+    }
+
+    /// Return the number of in-memory page.
+    pub fn number(&self) -> PageNumber {
+        self.number
+    }
+
+    /// Return the data of in-memory page.
+    pub fn data(&self) -> PageData {
+        self.data
+    }
+
+    /// Override current data to new values from params.
+    /// The is_dirty flag is set to false since the goal of
+    /// this fuction is to work like new but reuse the current
+    /// instance of MemPage.
+    fn reset(&mut self, number: PageNumber, data: PageData) {
+        assert_eq!(
+            self.number, INVALID_PAGE_NUMBER,
+            "Expected page number {} to be invalid to reset.",
+            self.number
+        );
+        self.set(number, data);
+        self.is_dirty = false;
     }
 }
 
@@ -130,6 +169,7 @@ impl Default for MemPage {
         Self {
             number: INVALID_PAGE_NUMBER,
             data: [0; PAGE_SIZE],
+            is_dirty: false,
         }
     }
 }
@@ -184,7 +224,7 @@ impl Pager {
         let mut data: PageData = [0; PAGE_SIZE];
         let count = self.file.read(&mut data)?;
         debug!("Read {} bytes from page {}", count, page_number);
-        page.set(page_number, data);
+        page.reset(page_number, data);
         Ok(())
     }
 
@@ -286,10 +326,7 @@ mod tests {
     fn test_first_page_not_override_header() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
         let page_number = pager.allocate_page();
-        let mem_page = MemPage {
-            data: [1; PAGE_SIZE],
-            number: page_number,
-        };
+        let mem_page = MemPage::new(page_number, [1; PAGE_SIZE]);
         pager.write_page(&mem_page)?;
 
         let mut page = MemPage::default();
@@ -309,10 +346,7 @@ mod tests {
             let mut pager = Pager::open(file.path())?;
             let page_number = pager.allocate_page();
             let page_data: PageData = [0; PAGE_SIZE];
-            let mem_page = MemPage {
-                number: page_number,
-                data: page_data,
-            };
+            let mem_page = MemPage::new(page_number, page_data);
             pager.write_page(&mem_page)?;
         }
 
@@ -320,10 +354,7 @@ mod tests {
         let mut pager = Pager::open(file.path())?;
         let page_number = pager.allocate_page();
         let page_data: PageData = [0; PAGE_SIZE];
-        let mem_page = MemPage {
-            number: page_number,
-            data: page_data,
-        };
+        let mem_page = MemPage::new(page_number, page_data);
         pager.write_page(&mem_page)?;
 
         assert_eq!(2, pager.size()?);
@@ -338,10 +369,7 @@ mod tests {
         for i in 0..total_pages {
             let page_number: PageNumber = pager.allocate_page();
             let page_data: PageData = [i; PAGE_SIZE];
-            let mem_page = MemPage {
-                number: page_number,
-                data: page_data,
-            };
+            let mem_page = MemPage::new(page_number, page_data);
             pager.write_page(&mem_page)?;
         }
 
@@ -361,10 +389,7 @@ mod tests {
         for i in 0..total_pages {
             let page_number: PageNumber = pager.allocate_page();
             let page_data: PageData = [i; PAGE_SIZE];
-            let mem_page = MemPage {
-                number: page_number,
-                data: page_data,
-            };
+            let mem_page = MemPage::new(page_number, page_data);
             pager.write_page(&mem_page)?;
 
             let mut page = MemPage::default();
