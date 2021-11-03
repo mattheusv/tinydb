@@ -292,7 +292,7 @@ mod tests {
         let mut buffer = BufferPool::new(open_test_pager(20), buffer_pool_size);
 
         // Fetch a page from disk to memory, and keep their reference.
-        let page = buffer.fetch_page(1)?;
+        let _page = buffer.fetch_page(1)?;
 
         // Fill buffer pool cache
         for page in 1..buffer_pool_size + 1 {
@@ -306,10 +306,6 @@ mod tests {
             // TODO: This should be called automatic on drop
             buffer.unpin_page(&(page as u32))?;
         }
-
-        // Just use the page allocated before.
-        // TODO: How discard this output? Like /dev/null
-        eprintln!("{:?}", page.clone().borrow().number());
 
         // Should victim some page and cache the new page.
         let _ = buffer.fetch_page(10)?;
