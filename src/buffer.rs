@@ -3,6 +3,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Minium value of strong references that a Page can have to unpim for victim's.
+//
+// Note that the value is 2 because we actually always will have at least an reference
+// to Rc<T> and a other to call the strong_count function.
+const MIN_STRONG_COUNT: usize = 2;
+
 /// Represents the ID of some page on the list of frames on buffer bool.
 pub type FrameID = u32;
 
@@ -198,15 +204,14 @@ impl BufferPool {
     pub fn unpin_page(&mut self, page_id: &PageNumber) -> Result<(), Error> {
         let page = self.get_page(page_id)?;
         let count = Rc::strong_count(&page);
-        // Means that the only references to this page on memory is
-        // on this scope on variable `page` and the the Rc itself.
-        if count <= 2 {
-            println!(
-                "Page {} does not contain any referenes. Unpining for victim",
-                page_id
-            );
+        if count <= MIN_STRONG_COUNT {
             self.replacer.unpin(page_id);
         }
+        println!(
+            "Page {} contain {} referenes",
+            page_id,
+            count - MIN_STRONG_COUNT
+        );
         return Ok(());
     }
 
