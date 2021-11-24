@@ -13,7 +13,7 @@ use std::path::Path;
 const HEADER_SIZE: usize = 100;
 
 /// Represents the size that a Page can have on database file.
-pub const PAGE_SIZE: usize = 4096 * 4; // 8 Kb
+pub const PAGE_SIZE: usize = 8192;
 
 /// Represents the first N bytes of the file.
 pub const MAGIC_BYTES_SIZE: usize = 6;
