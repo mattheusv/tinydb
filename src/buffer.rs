@@ -197,10 +197,11 @@ impl BufferPool {
         Ok(rc_page.clone())
     }
 
-    /// Decrement the pin counter for the Page specified by the given page_id. If the pin counter is zero,
-    /// then the function will add the Page object into the LRUReplacer tracker. If the given is_dirty flag
-    /// is true, then mark the Page as dirty; otherwise, leave the Page's dirty flag unmodified. If there is
-    /// no entry in the page table for the given page_id, then return Err(Error::PageNotFound).
+    /// Decrement the pin counter for the Page specified by the given page_id.
+    /// If the pin counter is zero,
+    /// then the function will add the Page object into the LRUReplacer tracker.
+    /// If there is no entry in the page table for the given page_id, then return
+    /// Err(Error::PageNotFound).
     pub fn unpin_page(&mut self, page_id: &PageNumber) -> Result<(), Error> {
         let page = self.get_page(page_id)?;
         let count = Rc::strong_count(&page);
