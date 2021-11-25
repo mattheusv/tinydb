@@ -130,13 +130,17 @@ impl MemPage {
         }
     }
 
-    /// Set number and data to current MemPage.
-    pub fn set(&mut self, number: PageNumber, data: PageData) {
+    /// Override current MemPage with number and data values.
+    //
+    // This is commonly used to reuse the same pointer of MemPage and avoid multiple allocations.
+    // The buffer pool pre allocate a set of MemPages and reuse them to read pages from disk.
+    fn set(&mut self, number: PageNumber, data: PageData) {
+        assert!(
+            !self.is_dirty,
+            "Expected that MemPage is not dirty to override data"
+        );
         self.number = number;
         self.data = data;
-        if number != INVALID_PAGE_NUMBER {
-            self.is_dirty = true;
-        }
     }
 
     /// Return the number of in-memory page.
@@ -149,17 +153,9 @@ impl MemPage {
         self.data
     }
 
-    /// Override current data to new values from params.
-    /// The is_dirty flag is set to false since the goal of
-    /// this fuction is to work like new but reuse the current
-    /// instance of MemPage.
-    fn reset(&mut self, number: PageNumber, data: PageData) {
-        assert_eq!(
-            self.number, INVALID_PAGE_NUMBER,
-            "Expected page number {} to be invalid to reset.",
-            self.number
-        );
-        self.set(number, data);
+    /// Reset MemPage instance to INVALID_PAGE_NUMBER and empty page data.
+    pub fn reset(&mut self) {
+        self.set(INVALID_PAGE_NUMBER, [0; PAGE_SIZE]);
         self.is_dirty = false;
     }
 }
@@ -224,7 +220,7 @@ impl Pager {
         let mut data: PageData = [0; PAGE_SIZE];
         let count = self.file.read(&mut data)?;
         debug!("Read {} bytes from page {}", count, page_number);
-        page.reset(page_number, data);
+        page.set(page_number, data);
         Ok(())
     }
 

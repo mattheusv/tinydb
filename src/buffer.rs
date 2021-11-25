@@ -1,4 +1,4 @@
-use crate::pager::{self, MemPage, PageNumber, Pager, INVALID_PAGE_NUMBER, PAGE_SIZE};
+use crate::pager::{self, MemPage, PageNumber, Pager};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -21,6 +21,7 @@ pub type FrameID = u32;
 // necessary to iterate over all FrameIDs to remove it.
 //
 // TODO: Make this implementation thread safe.
+#[derive(Debug, PartialEq)]
 pub struct LruReplacer {
     elements: Vec<FrameID>,
 }
@@ -94,15 +95,62 @@ impl From<pager::Error> for Error {
     }
 }
 
+/// Represents a mutable reference counter of a replacer.
+type RcLruReplacer = Rc<RefCell<LruReplacer>>;
+
 /// Represents a mutable reference counter of a memory page.
-pub type Page = Rc<RefCell<MemPage>>;
+type RcMemPage = Rc<RefCell<MemPage>>;
+
+/// Page is a wrapper arround a RcMemPage and RcLruReplacer that automatically unpin page from
+/// replacer when necessary during the drop operations.
+//
+// TODO: Make this implementation thread safe.
+#[derive(Debug, PartialEq)]
+pub struct Page {
+    /// The current block of memory of a page.
+    page: RcMemPage,
+
+    /// replacer used to unpin the page when necessary.
+    replacer: RcLruReplacer,
+}
+
+impl Page {
+    fn new(page: RcMemPage, replacer: RcLruReplacer) -> Self {
+        Self { page, replacer }
+    }
+}
+
+impl Drop for Page {
+    // Unpin an page from replacer if necessary. Basically this "unpining" will happen when a page
+    // does not have any references except the reference to Rc itself and the variable used to check
+    // the strong_count. dsadsa
+    fn drop(&mut self) {
+        let count = Rc::strong_count(&self.page);
+        if count <= MIN_STRONG_COUNT {
+            self.replacer
+                .borrow_mut()
+                .unpin(&self.page.borrow().number());
+        }
+
+        if count > MIN_STRONG_COUNT {
+            // This drop calls can actually be a recursive drop starting from Rc.
+            // Other calls of drop will be from callers that use the Rc for while and drop their
+            // references, so only print in theses scenarios.
+            println!(
+                "Page {} contain {} referenes",
+                self.page.borrow().number(),
+                count - MIN_STRONG_COUNT
+            );
+        }
+    }
+}
 
 pub struct BufferPool {
     /// Disk manager used to read and write pages in disk.
     pager: Pager,
 
     /// Replacer used to find a page that can be removed from memory.
-    replacer: LruReplacer,
+    replacer: RcLruReplacer,
 
     /// Size of buffer pool.
     size: usize,
@@ -111,7 +159,7 @@ pub struct BufferPool {
     page_map: HashMap<PageNumber, usize>,
 
     /// Contains an array of in-memory pages.
-    page_table: Vec<Page>,
+    page_table: Vec<RcMemPage>,
 
     /// Contains the index of free slots on page table.
     free_slots: Vec<usize>,
@@ -120,8 +168,11 @@ pub struct BufferPool {
 impl BufferPool {
     /// Create a new buffer pool with a given size.
     pub fn new(pager: Pager, size: usize) -> Self {
+        let replacer = Rc::new(RefCell::new(LruReplacer::new(size)));
+
         let mut page_table = Vec::with_capacity(size);
         let mut free_slots = Vec::with_capacity(size);
+
         for idx in 0..size {
             page_table.push(Rc::new(RefCell::new(MemPage::default())));
             free_slots.push(idx);
@@ -133,7 +184,7 @@ impl BufferPool {
             page_table,
             free_slots,
             page_map: HashMap::with_capacity(size),
-            replacer: LruReplacer::new(size),
+            replacer,
         }
     }
 
@@ -153,7 +204,7 @@ impl BufferPool {
         if let Ok(page) = self.get_page(&page_id) {
             // Page exists in memory, return a reference to it.
             println!("Page {} exists in memory", page_id);
-            return Ok(page);
+            return Ok(Page::new(page, self.replacer.clone()));
         }
         println!(
             "Page {} does not exists in memory, fetching from disk",
@@ -192,28 +243,9 @@ impl BufferPool {
         // a page using unping_page method this page_id will be added again on
         // replacer using replacer.unpin(&page_id), which means that this page
         // could be victim for other fetch_page calls.
-        self.replacer.pin(&page_id);
+        self.replacer.borrow_mut().pin(&page_id);
 
-        Ok(rc_page.clone())
-    }
-
-    /// Decrement the pin counter for the Page specified by the given page_id.
-    /// If the pin counter is zero,
-    /// then the function will add the Page object into the LRUReplacer tracker.
-    /// If there is no entry in the page table for the given page_id, then return
-    /// Err(Error::PageNotFound).
-    pub fn unpin_page(&mut self, page_id: &PageNumber) -> Result<(), Error> {
-        let page = self.get_page(page_id)?;
-        let count = Rc::strong_count(&page);
-        if count <= MIN_STRONG_COUNT {
-            self.replacer.unpin(page_id);
-        }
-        println!(
-            "Page {} contain {} referenes",
-            page_id,
-            count - MIN_STRONG_COUNT
-        );
-        return Ok(());
+        Ok(Page::new(rc_page.clone(), self.replacer.clone()))
     }
 
     /// Retrieve the Page object specified by the given page_id and then use the [Pager] to write its
@@ -233,6 +265,7 @@ impl BufferPool {
     fn victim(&mut self) -> Result<usize, Error> {
         let victim_page = self
             .replacer
+            .borrow_mut()
             .victim()
             .expect("replacer does not contain any page id to victim.");
 
@@ -250,7 +283,7 @@ impl BufferPool {
         }
 
         // Invalidate page data.
-        page.borrow_mut().set(INVALID_PAGE_NUMBER, [0; PAGE_SIZE]);
+        page.borrow_mut().reset();
 
         // Get index of slot to be reused.
         let free_slot = self.page_map.get(&victim_page).expect(&format!(
@@ -273,7 +306,7 @@ impl BufferPool {
     /// Return a page from page table to a given page id.
     /// If the page id does not exists on page on page table
     /// return Error::PageNotFound.
-    fn get_page(&self, page_id: &PageNumber) -> Result<Page, Error> {
+    fn get_page(&self, page_id: &PageNumber) -> Result<RcMemPage, Error> {
         if let Some(idx) = self.page_map.get(&page_id) {
             return Ok(self.page_table[*idx].clone());
         }
@@ -296,16 +329,14 @@ mod tests {
         let _page = buffer.fetch_page(1)?;
 
         // Fill buffer pool cache
-        for page in 1..buffer_pool_size + 1 {
+        for page_id in 1..buffer_pool_size + 1 {
             // Fetch some pages from disk to memory and make them
             // ready to victim.
             //
             // Note that since we fetch the page 1 before, after read
             // page 1 again and call unpin_page, the page 1 **should**
             // not be maked as ready for victim.
-            let _ = buffer.fetch_page(page as u32)?;
-            // TODO: This should be called automatic on drop
-            buffer.unpin_page(&(page as u32))?;
+            let _ = buffer.fetch_page(page_id as u32)?;
         }
 
         // Should victim some page and cache the new page.
@@ -338,7 +369,10 @@ mod tests {
 
         let expected = MemPage::new(5, [4; PAGE_SIZE]);
 
-        assert_eq!(page, Rc::new(RefCell::new(expected)));
+        assert_eq!(
+            page,
+            Page::new(Rc::new(RefCell::new(expected)), buffer.replacer.clone())
+        );
 
         Ok(())
     }
