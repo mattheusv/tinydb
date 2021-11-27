@@ -32,7 +32,7 @@ pub type HeaderData = [u8; HEADER_SIZE];
 /// of some page in database.
 pub type PageData = [u8; PAGE_SIZE];
 
-/// Represents the type of PageNumber.
+/// Represents the number of a page inside the database file.
 pub type PageNumber = u32;
 
 /// Represents errors that pager can have.

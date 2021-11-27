@@ -9,9 +9,6 @@ use std::rc::Rc;
 // to Rc<T> and a other to call the strong_count function.
 const MIN_STRONG_COUNT: usize = 2;
 
-/// Represents the ID of some page on the list of frames on buffer bool.
-pub type FrameID = u32;
-
 /// A least recently used (LRU) implementation.
 ///
 // TODO: Improve the implementation.
@@ -23,7 +20,7 @@ pub type FrameID = u32;
 // TODO: Make this implementation thread safe.
 #[derive(Debug, PartialEq)]
 pub struct LruReplacer {
-    elements: Vec<FrameID>,
+    elements: Vec<PageNumber>,
 }
 
 impl LruReplacer {
@@ -42,7 +39,7 @@ impl LruReplacer {
     // capacity, then a FrameID will be returned contaning the frame id
     // that buffer pool should remove from cache. Note that the FrameID
     // returned will be also removed from LruReplacer internal data structure.
-    pub fn victim(&mut self) -> Option<FrameID> {
+    pub fn victim(&mut self) -> Option<PageNumber> {
         self.elements.pop()
     }
 
@@ -53,7 +50,7 @@ impl LruReplacer {
     // Technilly this function will be called when buffer pool page is pinned
     // to a frame, which means that a page was be shared between with a client,
     // so since the page is shared we can not remove from buffer pool cache.
-    pub fn pin(&mut self, id: &FrameID) {
+    pub fn pin(&mut self, id: &PageNumber) {
         if let Some(index) = self.elements.iter().position(|v| v == id) {
             self.elements.remove(index);
         }
@@ -66,7 +63,7 @@ impl LruReplacer {
     // Technilly this function will be called when a page do not have any references
     // to it (which means that your pin_count will be 0). If a Page/FrameID does not
     // have any references we can remove from cache.
-    pub fn unpin(&mut self, id: &FrameID) {
+    pub fn unpin(&mut self, id: &PageNumber) {
         self.elements.insert(0, id.clone());
     }
 
