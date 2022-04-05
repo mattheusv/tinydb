@@ -1,14 +1,8 @@
-use crate::pager::{self, MemPage, PageNumber, Pager};
+use crate::pager::{self, MemPage, PageNumber, Pager, INVALID_PAGE_NUMBER, PAGE_SIZE};
 use crate::replacer::LruReplacer;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-/// Minium value of strong references that a Page can have to unpim for victim's.
-//
-// Note that the value is 2 because we actually always will have at least an reference
-// to Rc<T> and a other to call the strong_count function.
-const MIN_STRONG_COUNT: usize = 2;
 
 /// Represents errors that buffer pool can have.
 #[derive(Debug)]
@@ -29,53 +23,59 @@ impl From<pager::Error> for Error {
     }
 }
 
-/// Represents a mutable reference counter of a replacer.
-type RcLruReplacer = Rc<RefCell<LruReplacer>>;
-
-/// Represents a mutable reference counter of a memory page.
-type RcMemPage = Rc<RefCell<MemPage>>;
+pub type Page = Rc<RefCell<PageData>>;
 
 /// Page is a wrapper arround a RcMemPage and RcLruReplacer that automatically unpin page from
 /// replacer when necessary during the drop operations.
 //
 // TODO: Make this implementation thread safe.
 #[derive(Debug, PartialEq)]
-pub struct Page {
+pub struct PageData {
     /// The current block of memory of a page.
-    page: RcMemPage,
+    data: MemPage,
 
-    /// replacer used to unpin the page when necessary.
-    replacer: RcLruReplacer,
+    /// ID of current page.
+    number: PageNumber,
+
+    /// Flag that means if page was changed in memory or not.
+    is_dirty: bool,
+
+    /// Number of readers that are using current page
+    count: u32,
 }
 
-impl Page {
-    fn new(page: RcMemPage, replacer: RcLruReplacer) -> Self {
-        Self { page, replacer }
+impl PageData {
+    fn new(number: PageNumber, data: MemPage) -> Self {
+        Self {
+            data,
+            number,
+            is_dirty: false,
+            count: 0,
+        }
     }
-}
 
-impl Drop for Page {
-    // Unpin an page from replacer if necessary. Basically this "unpining" will happen when a page
-    // does not have any references except the reference to Rc itself and the variable used to check
-    // the strong_count. dsadsa
-    fn drop(&mut self) {
-        let count = Rc::strong_count(&self.page);
-        if count <= MIN_STRONG_COUNT {
-            self.replacer
-                .borrow_mut()
-                .unpin(&self.page.borrow().number());
-        }
+    /// Write data on current in memory page instance.
+    pub fn write(&mut self, data: MemPage) {
+        self.data = data;
+        self.is_dirty = true;
+    }
 
-        if count > MIN_STRONG_COUNT {
-            // This drop calls can actually be a recursive drop starting from Rc.
-            // Other calls of drop will be from callers that use the Rc for while and drop their
-            // references, so only print in theses scenarios.
-            println!(
-                "Page {} contain {} referenes",
-                self.page.borrow().number(),
-                count - MIN_STRONG_COUNT
-            );
-        }
+    /// Reset page instance to INVALID_PAGE_NUMBER and empty page data.
+    fn reset(&mut self) {
+        assert!(!self.is_dirty, "Can not reset dirty page");
+        self.data = [0; PAGE_SIZE];
+        self.number = INVALID_PAGE_NUMBER;
+        self.is_dirty = false;
+    }
+
+    fn pin(&mut self) {
+        self.count += 1;
+        println!("Page {} contains {} pins", self.number, self.count);
+    }
+
+    fn unpin(&mut self) {
+        self.count -= 1;
+        println!("Page {} contains {} pins", self.number, self.count);
     }
 }
 
@@ -84,7 +84,7 @@ pub struct BufferPool {
     pager: Pager,
 
     /// Replacer used to find a page that can be removed from memory.
-    replacer: RcLruReplacer,
+    replacer: LruReplacer,
 
     /// Size of buffer pool.
     size: usize,
@@ -93,7 +93,7 @@ pub struct BufferPool {
     page_map: HashMap<PageNumber, usize>,
 
     /// Contains an array of in-memory pages.
-    page_table: Vec<RcMemPage>,
+    page_table: Vec<Page>,
 
     /// Contains the index of free slots on page table.
     free_slots: Vec<usize>,
@@ -102,13 +102,16 @@ pub struct BufferPool {
 impl BufferPool {
     /// Create a new buffer pool with a given size.
     pub fn new(pager: Pager, size: usize) -> Self {
-        let replacer = Rc::new(RefCell::new(LruReplacer::new(size)));
+        let replacer = LruReplacer::new(size);
 
         let mut page_table = Vec::with_capacity(size);
         let mut free_slots = Vec::with_capacity(size);
 
         for idx in 0..size {
-            page_table.push(Rc::new(RefCell::new(MemPage::default())));
+            page_table.push(Rc::new(RefCell::new(PageData::new(
+                INVALID_PAGE_NUMBER,
+                [0; PAGE_SIZE],
+            ))));
             free_slots.push(idx);
         }
 
@@ -122,37 +125,54 @@ impl BufferPool {
         }
     }
 
-    /// Returns a Page object that contains the contents of the given page_id.
-    /// The function first check its internal page table to see whether there already exists
-    /// a Page that is mapped to the page_id. If it does, then it returns it.
-    /// Otherwise it will retrieve the physical page from the [Pager]. To do this, the
-    /// function select a [pager::MemPage] object to store the physical page's contents.
-    /// If there are free frames in the page table, then the function will select a random one
-    /// to use. Otherwise, it will use the LRUReplacer to select an unpinned [pager::MemPage] that was
-    /// least recently used as the "victim" page. If there are no free slots
-    /// (i.e., all the pages are pinned), then return an Error::NoFreeSlots.
-    /// If the selected victim page is dirty, then the [Pager] is used to write its contents out
-    /// to disk. The [Pager] is also used to read the target physical page from disk and copy its contents
-    /// into that [pager::MemPage] object.
+    /// Fetch the requested page from the buffer pool.
     pub fn fetch_page(&mut self, page_id: PageNumber) -> Result<Page, Error> {
-        if let Ok(page) = self.get_page(&page_id) {
-            // Page exists in memory, return a reference to it.
-            println!("Page {} exists in memory", page_id);
-            return Ok(Page::new(page, self.replacer.clone()));
-        }
-        println!(
-            "Page {} does not exists in memory, fetching from disk",
-            page_id
-        );
-
-        // Page does not exists in memory. Find a free slot on page table
-        // to read the page from disk.
-        let free_slot = match self.find_free_slot() {
-            Ok(fs) => fs,
-            Err(Error::NoFreeSlots) => {
-                println!("Buffer pool is at full capacity {}", self.size);
-                self.victim()?
+        if let Ok(page) = self.get_page(page_id) {
+            if page.borrow().number == page_id {
+                println!("Page {} exists on memory", page_id);
+                page.borrow_mut().pin();
+                return Ok(page);
             }
+        }
+        println!("Fething page {} from disk", page_id);
+        self.new_page(page_id)
+    }
+
+    /// Unpin the target page from the buffer pool. The page is also unpined on replacer
+    /// if the pin count is 0.
+    ///
+    /// Return error if the page does not exists on buffer pool, None otherwise.
+    pub fn unpin_page(&mut self, page_id: PageNumber) -> Result<(), Error> {
+        let page = self.get_page(page_id)?;
+        page.borrow_mut().unpin();
+
+        if page.borrow().count == 0 {
+            self.replacer.unpin(&page_id);
+        }
+
+        Ok(())
+    }
+
+    /// Flushes the target page to disk.
+    ///
+    /// The param page_id id cannot be INVALID_PAGE_ID.
+    ///
+    /// Return error if the page could not be found in the page table, None otherwise.
+    pub fn flush_page(&mut self, page_id: PageNumber) -> Result<(), Error> {
+        let page = self.get_page(page_id)?;
+        let mut page = page.borrow_mut();
+        self.pager.write_page(page_id, &page.data)?;
+        page.is_dirty = false;
+        Ok(())
+    }
+
+    /// Creates a new page in the buffer pool.
+    ///
+    /// Return error if no new pages could be created, otherwise the page
+    pub fn new_page(&mut self, page_id: PageNumber) -> Result<Page, Error> {
+        let free_slot = match self.find_free_slot() {
+            Ok(slot) => slot,
+            Err(Error::NoFreeSlots) => self.victim()?,
             Err(err) => return Err(err),
         };
 
@@ -160,99 +180,123 @@ impl BufferPool {
 
         let rc_page = self.page_table.get(free_slot).expect(&format!(
             "invalid free slot {} on page table of size {}",
-            free_slot, self.size
+            free_slot,
+            self.page_table.len()
         ));
 
-        // Read from disk.
+        // Fill page id and page data from pager.
         let mut page = rc_page.borrow_mut();
-        self.pager.read_page(page_id, &mut page)?;
+        page.number = page_id;
+        self.pager.read_page(page_id, &mut page.data)?;
 
-        // Add on cache.
-        self.page_map.insert(page_id.clone(), free_slot);
+        // Add page on cache.
+        self.page_map.insert(page_id, free_slot);
 
-        // Pin this page to avoid victim for other calls.
-        //
-        // We can not victim this page when cache is full because the client
-        // could been using this page, so we can not reuse. When client unpin
-        // a page using unping_page method this page_id will be added again on
-        // replacer using replacer.unpin(&page_id), which means that this page
-        // could be victim for other fetch_page calls.
-        self.replacer.borrow_mut().pin(&page_id);
+        page.pin();
+        self.replacer.pin(&page_id);
 
-        Ok(Page::new(rc_page.clone(), self.replacer.clone()))
+        Ok(rc_page.clone())
     }
 
-    /// Retrieve the Page object specified by the given page_id and then use the [Pager] to write its
-    /// contents out to disk. Upon successful completion of that write operation, the function
-    /// will return nothing. This function does not remove the Page from the buffer pool.
-    /// If there is no entry in the page table for the given page_id, then return
-    /// Err(Error::PageNotFound).
+    /// Deletes a page from the buffer pool.
     ///
-    /// Note that it also does not update the LRUReplacer for the Page.
-    pub fn flush_page(&mut self, page_id: &PageNumber) -> Result<(), Error> {
-        let page = self.get_page(page_id)?;
-        self.pager.write_page(&page.borrow())?;
-        Ok(())
+    /// Return error if the page exists but could not be deleted, None if the page didn't exist or deletion succeeded
+    pub fn delete_page(&mut self, page_id: PageNumber) -> Result<(), Error> {
+        if let Some(_) = self.page_map.remove(&page_id) {
+            Ok(())
+        } else {
+            Err(Error::PageNotFound(page_id))
+        }
     }
 
-    /// Victim a page from cache using replacer strategy and return the new free slot.
+    /// Flushes all the pages in the buffer pool to disk.
+    pub fn flush_all_pages(&mut self) -> Result<(), Error> {
+        todo!()
+    }
+
     fn victim(&mut self) -> Result<usize, Error> {
-        let victim_page = self
+        println!("Buffer pool is at full capacity {}", self.size);
+
+        let page_id = self
             .replacer
-            .borrow_mut()
             .victim()
-            .expect("replacer does not contain any page id to victim.");
+            .expect("replacer does not contain any page id to victim");
 
-        println!("Page {} was chosen for victim", victim_page);
+        println!("Page {} was chosen for victim", page_id);
 
-        let page = self.get_page(&victim_page)?;
+        let rc_page = self.get_page(page_id)?;
 
-        // Write page on disk if is dirty.
-        if page.borrow().is_dirty {
-            println!(
-                "Page {} is dirty, writing to disk before victim",
-                victim_page
-            );
-            self.flush_page(&victim_page)?;
+        if rc_page.borrow().is_dirty {
+            println!("Flusing dirty page {} to disk before victim", page_id);
+            self.flush_page(page_id)?;
         }
 
-        // Invalidate page data.
-        page.borrow_mut().reset();
+        rc_page.borrow_mut().reset();
 
-        // Get index of slot to be reused.
-        let free_slot = self.page_map.get(&victim_page).expect(&format!(
-            "victim page {} does not exists on page map {:?}",
-            victim_page, self.page_map
+        let free_slot = self.page_map.get(&page_id).expect(&format!(
+            "page {} was chosen for victim but does not exists on page map",
+            page_id
         ));
 
         Ok(*free_slot)
     }
 
-    /// Return a free slot of page on page table. If there is no free slot
-    /// Err(Error::NoFreeSlots) is returned.
+    /// Return the free slot to store a page on page table. If there is no free slot
+    /// find_free_slot return Error::NoFreeSlots.
     fn find_free_slot(&mut self) -> Result<usize, Error> {
-        if let Some(page_id) = self.free_slots.pop() {
-            return Ok(page_id);
+        if let Some(slot) = self.free_slots.pop() {
+            return Ok(slot);
         }
         Err(Error::NoFreeSlots)
     }
 
-    /// Return a page from page table to a given page id.
-    /// If the page id does not exists on page on page table
-    /// return Error::PageNotFound.
-    fn get_page(&self, page_id: &PageNumber) -> Result<RcMemPage, Error> {
+    /// Return the request page to the given page id. If the page does not exists on buffer pool
+    /// get_page return Error::PageNotFound.
+    fn get_page(&self, page_id: PageNumber) -> Result<Page, Error> {
         if let Some(idx) = self.page_map.get(&page_id) {
-            return Ok(self.page_table[*idx].clone());
+            let page = self.page_table[*idx].clone();
+            return Ok(page);
         }
-        Err(Error::PageNotFound(*page_id))
+        Err(Error::PageNotFound(page_id))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::pager::{PageData, PAGE_SIZE};
+    use super::pager::PAGE_SIZE;
     use super::*;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_buffer_pool_write_dirty_page_on_victim() -> Result<(), Error> {
+        let buffer_pool_size = 3;
+        let mut buffer = BufferPool::new(open_test_pager(20), buffer_pool_size);
+
+        let page_data = [5; PAGE_SIZE];
+
+        // Fetch a page from disk to memory, and write some data.
+        {
+            let page = buffer.fetch_page(1)?;
+            page.borrow_mut().write(page_data);
+            buffer.unpin_page(1)?;
+        }
+
+        // Fill buffer pool cache
+        for page_id in 1..buffer_pool_size + 2 {
+            let _ = buffer.fetch_page(page_id as u32)?;
+            buffer.unpin_page(page_id as u32)?;
+        }
+
+        let page = buffer.fetch_page(1)?;
+
+        assert_eq!(
+            page_data,
+            page.borrow().data,
+            "Expected equal page data after victim dirty page"
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn test_buffer_pool_victin_on_fetch_page() -> Result<(), Error> {
@@ -271,6 +315,7 @@ mod tests {
             // page 1 again and call unpin_page, the page 1 **should**
             // not be maked as ready for victim.
             let _ = buffer.fetch_page(page_id as u32)?;
+            buffer.unpin_page(page_id as u32)?;
         }
 
         // Should victim some page and cache the new page.
@@ -301,12 +346,8 @@ mod tests {
         let mut buffer = BufferPool::new(open_test_pager(20), 10);
         let page = buffer.fetch_page(5)?;
 
-        let expected = MemPage::new(5, [4; PAGE_SIZE]);
-
-        assert_eq!(
-            page,
-            Page::new(Rc::new(RefCell::new(expected)), buffer.replacer.clone())
-        );
+        assert_eq!(page.borrow().number, 5);
+        assert_eq!(page.borrow().data, [4; PAGE_SIZE]);
 
         Ok(())
     }
@@ -318,9 +359,8 @@ mod tests {
 
         for i in 0..total_pages {
             let page_number: PageNumber = pager.allocate_page();
-            let page_data: PageData = [i as u8; PAGE_SIZE];
-            let mem_page = MemPage::new(page_number, page_data);
-            pager.write_page(&mem_page).unwrap();
+            let page_data = [i as u8; PAGE_SIZE];
+            pager.write_page(page_number, &page_data).unwrap();
         }
 
         pager
