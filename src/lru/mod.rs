@@ -57,7 +57,9 @@ where
     // to it (which means that your pin_count will be 0). If a Page/FrameID does not
     // have any references we can remove from cache.
     pub fn unpin(&mut self, id: &T) {
-        self.elements.insert(0, id.clone());
+        if !self.elements.contains(id) {
+            self.elements.insert(0, id.clone());
+        }
     }
 
     /// Returns the number of frames that are currently in the LRUReplacer.
@@ -69,6 +71,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_unpin_same_key() {
+        let mut replacer = LRU::new(5);
+        replacer.unpin(&1);
+        replacer.unpin(&2);
+        replacer.unpin(&1); // Duplicate key
+        replacer.unpin(&3);
+
+        assert_eq!(replacer.victim(), Some(1));
+        assert_eq!(replacer.victim(), Some(2));
+        assert_eq!(replacer.victim(), Some(3));
+        assert_eq!(replacer.size(), 0);
+    }
 
     #[test]
     fn test_lru_victim() {
