@@ -1,5 +1,3 @@
-use crate::pager::PageNumber;
-
 /// A least recently used (LRU) implementation.
 ///
 // TODO: Improve the implementation.
@@ -10,11 +8,15 @@ use crate::pager::PageNumber;
 //
 // TODO: Make this implementation thread safe.
 #[derive(Debug, PartialEq)]
-pub struct LruReplacer {
-    elements: Vec<PageNumber>,
+pub struct LRU<T> {
+    elements: Vec<T>,
 }
 
-impl LruReplacer {
+impl<T> LRU<T>
+where
+    T: Clone,
+    T: PartialEq,
+{
     /// Create a new empty LruReplacer.
     pub fn new(size: usize) -> Self {
         Self {
@@ -30,7 +32,7 @@ impl LruReplacer {
     // capacity, then a FrameID will be returned contaning the frame id
     // that buffer pool should remove from cache. Note that the FrameID
     // returned will be also removed from LruReplacer internal data structure.
-    pub fn victim(&mut self) -> Option<PageNumber> {
+    pub fn victim(&mut self) -> Option<T> {
         self.elements.pop()
     }
 
@@ -41,7 +43,7 @@ impl LruReplacer {
     // Technilly this function will be called when buffer pool page is pinned
     // to a frame, which means that a page was be shared between with a client,
     // so since the page is shared we can not remove from buffer pool cache.
-    pub fn pin(&mut self, id: &PageNumber) {
+    pub fn pin(&mut self, id: &T) {
         if let Some(index) = self.elements.iter().position(|v| v == id) {
             self.elements.remove(index);
         }
@@ -54,7 +56,7 @@ impl LruReplacer {
     // Technilly this function will be called when a page do not have any references
     // to it (which means that your pin_count will be 0). If a Page/FrameID does not
     // have any references we can remove from cache.
-    pub fn unpin(&mut self, id: &PageNumber) {
+    pub fn unpin(&mut self, id: &T) {
         self.elements.insert(0, id.clone());
     }
 
@@ -69,8 +71,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_replacer_victim() {
-        let mut replacer = LruReplacer::new(3);
+    fn test_lru_victim() {
+        let mut replacer = LRU::new(3);
         replacer.unpin(&10);
         replacer.unpin(&30);
         replacer.unpin(&20);
@@ -82,8 +84,8 @@ mod tests {
     }
 
     #[test]
-    fn test_replacer_pin() {
-        let mut replacer = LruReplacer::new(10);
+    fn test_lru_pin() {
+        let mut replacer = LRU::new(10);
         for i in 0..10 {
             replacer.unpin(&i);
         }
@@ -97,8 +99,8 @@ mod tests {
     }
 
     #[test]
-    fn test_replacer_unpin() {
-        let mut replacer = LruReplacer::new(1);
+    fn test_lru_unpin() {
+        let mut replacer = LRU::new(1);
         replacer.unpin(&1);
         assert_eq!(replacer.size(), 1);
     }

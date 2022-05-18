@@ -1,5 +1,5 @@
+use crate::lru::LRU;
 use crate::pager::{self, MemPage, PageNumber, Pager, INVALID_PAGE_NUMBER, PAGE_SIZE};
-use crate::replacer::LruReplacer;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -84,7 +84,7 @@ pub struct BufferPool {
     pager: Pager,
 
     /// Replacer used to find a page that can be removed from memory.
-    replacer: LruReplacer,
+    replacer: LRU<PageNumber>,
 
     /// Size of buffer pool.
     size: usize,
@@ -102,7 +102,7 @@ pub struct BufferPool {
 impl BufferPool {
     /// Create a new buffer pool with a given size.
     pub fn new(pager: Pager, size: usize) -> Self {
-        let replacer = LruReplacer::new(size);
+        let replacer = LRU::new(size);
 
         let mut page_table = Vec::with_capacity(size);
         let mut free_slots = Vec::with_capacity(size);
