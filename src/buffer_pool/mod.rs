@@ -1,7 +1,7 @@
 mod bytes;
 
+use crate::disk::{self, PageNumber, Pager, PAGE_SIZE};
 use crate::lru::LRU;
-use crate::pager::{self, PageNumber, Pager, PAGE_SIZE};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -19,11 +19,11 @@ pub enum Error {
     PageNotFound(PageNumber),
 
     /// Represents errors related to disk page access.
-    Disk(pager::Error),
+    Disk(disk::Error),
 }
 
-impl From<pager::Error> for Error {
-    fn from(err: pager::Error) -> Self {
+impl From<disk::Error> for Error {
+    fn from(err: disk::Error) -> Self {
         Self::Disk(err)
     }
 }
@@ -224,7 +224,7 @@ impl BufferPool {
 
 #[cfg(test)]
 mod tests {
-    use super::pager::PAGE_SIZE;
+    use super::disk::PAGE_SIZE;
     use super::*;
     use tempfile::NamedTempFile;
 
