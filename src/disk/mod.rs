@@ -31,7 +31,14 @@ pub type HeaderData = [u8; HEADER_SIZE];
 /// MemPage is a type that represents the array of bytes of some page in database.
 pub type MemPage = [u8; PAGE_SIZE];
 
-/// Represents the number of a page inside the database file.
+/// Each data file (heap or index) is divided into disk blocks
+/// (which may be thought of as the unit of i/o -- a Bytes buffer
+/// contains exactly one disk block). The blocks are numbered
+/// sequentially, starting at 0.
+///
+/// The access methods, the buffer manager and the storage manager are
+/// more or less the only pieces of code that should be accessing disk
+/// blocks directly.
 pub type PageNumber = u32;
 
 /// Represents errors that pager can have.
