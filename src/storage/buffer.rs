@@ -3,6 +3,7 @@ use crate::storage::{pager, pager::PageNumber, pager::Pager, pager::PAGE_SIZE};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// Represents errors that buffer pool can have.
@@ -65,18 +66,15 @@ impl<const N: usize> Bytes<{ N }> {
 /// Page is represents a mutable reference counter to a fixed block of bytes.
 pub type Page = Rc<RefCell<Bytes<PAGE_SIZE>>>;
 
-/// Wrapper type around BufferPoolEntry that represents a mutable reference to it.
-type Entry = Rc<RefCell<BufferPoolEntry>>;
-
 /// BufferPoolEntry represents an entry cache inside buffer pool. It hols the page beeing
 /// cached, a flag informing if the page is dirty and the pin count for futher victim's.
-struct BufferPoolEntry {
+struct EntryData {
     page: Page,
     is_dirty: bool,
     count: usize,
 }
 
-impl BufferPoolEntry {
+impl EntryData {
     /// Increment the pin count of entry.
     fn pin(&mut self) {
         self.count += 1;
@@ -88,7 +86,7 @@ impl BufferPoolEntry {
     }
 }
 
-impl Default for BufferPoolEntry {
+impl Default for EntryData {
     fn default() -> Self {
         Self {
             page: Rc::new(RefCell::new(Bytes::new())),
@@ -98,7 +96,7 @@ impl Default for BufferPoolEntry {
     }
 }
 
-impl Debug for BufferPoolEntry {
+impl Debug for EntryData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Entry")
             .field("page", &"[...]")
@@ -108,13 +106,30 @@ impl Debug for BufferPoolEntry {
     }
 }
 
+/// A mutable reference counter to EntryData.
+type Entry = Rc<RefCell<EntryData>>;
+
+/// Relation provide all information that we need to know to physically access a database relation.
+#[derive(Clone)]
+pub struct Relation {
+    /// Name of database that this relation belongs.
+    pub db_name: String,
+
+    /// Name of this relation.
+    pub rel_name: String,
+}
+
+impl Relation {
+    /// Return the joined path of relation using the database and relation name.
+    pub fn full_path(&self) -> PathBuf {
+        Path::new(&self.db_name).join(&self.rel_name)
+    }
+}
+
 /// BufferPool is responsible for fetching database pages from the disk and storing them in memory.
 /// The BufferPool can also write dirty pages out to disk when it is either explicitly instructed to do so
 /// or when it needs to evict a page to make space for a new page.
 pub struct BufferPool {
-    /// Disk manager used to read and write pages in disk.
-    disk: Pager,
-
     /// Replacer used to find a page that can be removed from memory.
     lru: LRU<PageNumber>,
 
@@ -123,27 +138,30 @@ pub struct BufferPool {
 
     /// Contains a map of page number and buffer pool entry that is currecntly in use.
     page_table: HashMap<PageNumber, Entry>,
+
+    /// A cache of page relation metadata information.
+    relation_data: HashMap<PageNumber, Relation>,
 }
 
 impl BufferPool {
     /// Create a new buffer pool with a given size.
-    pub fn new(disk: Pager, size: usize) -> Self {
+    pub fn new(size: usize) -> Self {
         Self {
-            disk,
             size,
-            page_table: HashMap::with_capacity(size),
             lru: LRU::new(size),
+            relation_data: HashMap::with_capacity(size),
+            page_table: HashMap::with_capacity(size),
         }
     }
 
     /// Fetch the requested page from the buffer pool.
-    pub fn fetch_page(&mut self, page_id: PageNumber) -> Result<Page, Error> {
+    pub fn fetch_page(&mut self, rel: &Relation, page_id: PageNumber) -> Result<Page, Error> {
         if let Ok(entry) = self.get_entry(page_id) {
             println!("Page {} exists on memory", page_id);
             entry.borrow_mut().pin();
             return Ok(entry.borrow().page.clone());
         }
-        self.new_page(page_id)
+        self.new_page(rel, page_id)
     }
 
     /// Unpin the target page from the buffer pool. The page is also unpined on lru replacer
@@ -168,12 +186,15 @@ impl BufferPool {
     ///
     /// Return error if the page could not be found in the page table, None otherwise.
     pub fn flush_page(&mut self, page_id: PageNumber) -> Result<(), Error> {
-        let entry = self.get_entry(page_id)?;
-        self.disk
-            .write_page(page_id, &entry.borrow().page.borrow().bytes())?;
+        let rel = &self.relation_data[&page_id];
+        let mut pager = Pager::open(&rel.full_path())?;
 
-        entry.borrow_mut().is_dirty = false;
-        entry.borrow().page.borrow_mut().reset();
+        let entry = self.get_entry(page_id)?;
+        let mut entry = entry.borrow_mut();
+        pager.write_page(page_id, &entry.page.borrow().bytes())?;
+
+        entry.is_dirty = false;
+        entry.page.borrow_mut().reset();
 
         Ok(())
     }
@@ -181,7 +202,7 @@ impl BufferPool {
     /// Creates a new page in the buffer pool.
     ///
     /// Return error if no new pages could be created, otherwise the page.
-    pub fn new_page(&mut self, page_id: PageNumber) -> Result<Page, Error> {
+    pub fn new_page(&mut self, rel: &Relation, page_id: PageNumber) -> Result<Page, Error> {
         if self.page_table.len() >= self.size {
             println!("Buffer pool is at full capacity {}", self.size);
             self.victim()?;
@@ -192,13 +213,14 @@ impl BufferPool {
         entry.borrow_mut().pin();
 
         // Read the page from disk inside the buffer pool entry.
-        self.disk
-            .read_page(page_id, &mut entry.borrow().page.borrow_mut().bytes_mut())?;
+        let mut pager = Pager::open(&rel.full_path())?;
+        pager.read_page(page_id, &mut entry.borrow().page.borrow_mut().bytes_mut())?;
         let page = entry.borrow().page.clone();
 
         // Add page on cache.
         self.page_table.insert(page_id, entry);
         self.lru.pin(&page_id);
+        self.relation_data.insert(page_id, rel.clone());
 
         Ok(page)
     }
@@ -260,29 +282,29 @@ impl BufferPool {
 mod tests {
     use super::pager::PAGE_SIZE;
     use super::*;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn test_buffer_pool_write_dirty_page_on_victim() -> Result<(), Error> {
+        let relation = test_relation(20);
         let buffer_pool_size = 3;
-        let mut buffer = BufferPool::new(open_test_pager(20), buffer_pool_size);
+        let mut buffer = BufferPool::new(buffer_pool_size);
 
         let page_data = [5; PAGE_SIZE];
 
         // Fetch a page from disk to memory, and write some data.
         {
-            let page = buffer.fetch_page(1)?;
+            let page = buffer.fetch_page(&relation, 1)?;
             page.borrow_mut().write(page_data);
             buffer.unpin_page(1, true)?;
         }
 
         // Fill buffer pool cache
         for page_id in 1..buffer_pool_size + 2 {
-            let _ = buffer.fetch_page(page_id as u32)?;
+            let _ = buffer.fetch_page(&relation, page_id as u32)?;
             buffer.unpin_page(page_id as u32, false)?;
         }
 
-        let page = buffer.fetch_page(1)?;
+        let page = buffer.fetch_page(&relation, 1)?;
 
         assert_eq!(
             page_data,
@@ -295,11 +317,12 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_victin_on_fetch_page() -> Result<(), Error> {
+        let relation = test_relation(20);
         let buffer_pool_size = 3;
-        let mut buffer = BufferPool::new(open_test_pager(20), buffer_pool_size);
+        let mut buffer = BufferPool::new(buffer_pool_size);
 
         // Fetch a page from disk to memory, and keep their reference.
-        let _page = buffer.fetch_page(1)?;
+        let _page = buffer.fetch_page(&relation, 1)?;
 
         // Fill buffer pool cache
         for page_id in 1..buffer_pool_size + 1 {
@@ -309,12 +332,12 @@ mod tests {
             // Note that since we fetch the page 1 before, after read
             // page 1 again and call unpin_page, the page 1 **should**
             // not be maked as ready for victim.
-            let _ = buffer.fetch_page(page_id as u32)?;
+            let _ = buffer.fetch_page(&relation, page_id as u32)?;
             buffer.unpin_page(page_id as u32, false)?;
         }
 
         // Should victim some page and cache the new page.
-        let _ = buffer.fetch_page(10)?;
+        let _ = buffer.fetch_page(&relation, 10)?;
 
         // Since the buffer pool reached maximum capacity the page table
         // should have the same size of buffer pool.
@@ -329,9 +352,9 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_fetch_page_from_memory() -> Result<(), Error> {
-        let mut buffer = BufferPool::new(open_test_pager(20), 10);
-        let page_from_disk = buffer.fetch_page(5)?;
-        let page_from_memory = buffer.fetch_page(5)?;
+        let mut buffer = BufferPool::new(10);
+        let page_from_disk = buffer.fetch_page(&test_relation(20), 5)?;
+        let page_from_memory = buffer.fetch_page(&test_relation(20), 5)?;
 
         assert_eq!(page_from_disk, page_from_memory);
 
@@ -340,8 +363,8 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_fetch_page_from_disk() -> Result<(), Error> {
-        let mut buffer = BufferPool::new(open_test_pager(20), 10);
-        let page = buffer.fetch_page(5)?;
+        let mut buffer = BufferPool::new(10);
+        let page = buffer.fetch_page(&test_relation(20), 5)?;
 
         assert_eq!(page.borrow().bytes(), [4; PAGE_SIZE]);
 
@@ -349,16 +372,22 @@ mod tests {
     }
 
     /// Create a new pager with a some empty pages.
-    fn open_test_pager(total_pages: usize) -> Pager {
-        let file = NamedTempFile::new().unwrap();
-        let mut pager = Pager::open(file.path()).unwrap();
+    fn test_relation(pages: usize) -> Relation {
+        use rand::prelude::random;
 
-        for i in 0..total_pages {
+        let relation = Relation {
+            db_name: std::env::temp_dir().to_str().unwrap().to_string(),
+            rel_name: format!("tinydb-tempfile-test-{}", random::<i32>()).to_string(),
+        };
+
+        let mut pager = Pager::open(&relation.full_path()).unwrap();
+
+        for i in 0..pages {
             let page_number: PageNumber = pager.allocate_page();
             let page_data = [i as u8; PAGE_SIZE];
             pager.write_page(page_number, &page_data).unwrap();
         }
 
-        pager
+        relation
     }
 }
