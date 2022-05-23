@@ -138,18 +138,19 @@ impl BufferPool {
         }
     }
 
-    /// Fetch the requested page from the buffer pool.
+    /// Fetch the requested page from the buffer pool. If no page exists already and the buffer
+    /// pool is at full capacity, select a replacement victim and evicts the old page, otherwise
+    /// just search a free slot to allocate the new page.
     pub fn fetch_page(&mut self, rel: &Relation, page_id: PageNumber) -> Result<Page, Error> {
         if let Ok(entry) = self.get_entry(page_id) {
             println!("Page {} exists on memory", page_id);
             entry.borrow_mut().pin();
             return Ok(entry.borrow().page.clone());
         }
-        self.new_page(rel, page_id)
+        self.alloc_page(rel, page_id)
     }
 
-    /// Unpin the target page from the buffer pool. The page is also unpined on lru replacer
-    /// if the pin count is 0.
+    /// Make the page available for replacement. The page is also unpined on lru if the ref count is 0.
     ///
     /// Return error if the page does not exists on buffer pool, None otherwise.
     pub fn unpin_page(&mut self, page_id: PageNumber, is_dirty: bool) -> Result<(), Error> {
@@ -166,7 +167,7 @@ impl BufferPool {
         Ok(())
     }
 
-    /// Flushes the target page to disk.
+    /// Physically write out a shared page to disk.
     ///
     /// Return error if the page could not be found in the page table, None otherwise.
     pub fn flush_page(&mut self, page_id: PageNumber) -> Result<(), Error> {
@@ -183,10 +184,11 @@ impl BufferPool {
         Ok(())
     }
 
-    /// Creates a new page in the buffer pool.
+    /// Allocate a new page on buffer pool. If the buffer pool is at full capacity, alloc_page will
+    /// select a replacement victim to allocate the new page.
     ///
     /// Return error if no new pages could be created, otherwise the page.
-    pub fn new_page(&mut self, rel: &Relation, page_id: PageNumber) -> Result<Page, Error> {
+    fn alloc_page(&mut self, rel: &Relation, page_id: PageNumber) -> Result<Page, Error> {
         if self.page_table.len() >= self.size {
             println!("Buffer pool is at full capacity {}", self.size);
             self.victim()?;
@@ -207,23 +209,6 @@ impl BufferPool {
         self.relation_data.insert(page_id, rel.clone());
 
         Ok(page)
-    }
-
-    /// Deletes a page from the buffer pool.
-    ///
-    /// Return error if the page exists but could not be deleted, None if the page didn't exist or
-    /// deletion succeeded
-    pub fn delete_page(&mut self, page_id: PageNumber) -> Result<(), Error> {
-        if let Some(_) = self.page_table.remove(&page_id) {
-            Ok(())
-        } else {
-            Err(Error::PageNotFound(page_id))
-        }
-    }
-
-    /// Flushes all the pages in the buffer pool to disk.
-    pub fn flush_all_pages(&mut self) -> Result<(), Error> {
-        todo!()
     }
 
     /// Use the LRU replacement policy to choose a page to victim. This function panic if the LRU
