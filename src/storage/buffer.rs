@@ -13,7 +13,7 @@ pub enum Error {
     /// Represents no free slots on buffer pool.
     NoFreeSlots,
 
-    /// Represents that an page_id does not exists on buffer pool.
+    /// Represents that an page_num does not exists on buffer pool.
     PageNotFound(PageNumber),
 
     /// Represents errors related to disk page access.
@@ -141,27 +141,27 @@ impl BufferPool {
     /// Fetch the requested page from the buffer pool. If no page exists already and the buffer
     /// pool is at full capacity, select a replacement victim and evicts the old page, otherwise
     /// just search a free slot to allocate the new page.
-    pub fn fetch_page(&mut self, rel: &Relation, page_id: PageNumber) -> Result<Page, Error> {
-        if let Ok(entry) = self.get_entry(page_id) {
-            println!("Page {} exists on memory", page_id);
+    pub fn fetch_page(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Page, Error> {
+        if let Ok(entry) = self.get_entry(page_num) {
+            println!("Page {} exists on memory", page_num);
             entry.borrow_mut().pin();
             return Ok(entry.borrow().page.clone());
         }
-        self.alloc_page(rel, page_id)
+        self.alloc_page(rel, page_num)
     }
 
     /// Make the page available for replacement. The page is also unpined on lru if the ref count is 0.
     ///
     /// Return error if the page does not exists on buffer pool, None otherwise.
-    pub fn unpin_page(&mut self, page_id: PageNumber, is_dirty: bool) -> Result<(), Error> {
-        let entry = self.get_entry(page_id)?;
+    pub fn unpin_page(&mut self, page_num: PageNumber, is_dirty: bool) -> Result<(), Error> {
+        let entry = self.get_entry(page_num)?;
 
         let mut entry = entry.borrow_mut();
         entry.is_dirty = entry.is_dirty || is_dirty;
         entry.unpin();
 
         if entry.count == 0 {
-            self.lru.unpin(&page_id);
+            self.lru.unpin(&page_num);
         }
 
         Ok(())
@@ -170,13 +170,13 @@ impl BufferPool {
     /// Physically write out a shared page to disk.
     ///
     /// Return error if the page could not be found in the page table, None otherwise.
-    pub fn flush_page(&mut self, page_id: PageNumber) -> Result<(), Error> {
-        let rel = &self.relation_data[&page_id];
+    pub fn flush_page(&mut self, page_num: PageNumber) -> Result<(), Error> {
+        let rel = &self.relation_data[&page_num];
         let mut pager = Pager::open(&rel.full_path())?;
 
-        let entry = self.get_entry(page_id)?;
+        let entry = self.get_entry(page_num)?;
         let mut entry = entry.borrow_mut();
-        pager.write_page(page_id, &entry.page.borrow().bytes())?;
+        pager.write_page(page_num, &entry.page.borrow().bytes())?;
 
         entry.is_dirty = false;
         entry.page.borrow_mut().reset();
@@ -188,25 +188,25 @@ impl BufferPool {
     /// select a replacement victim to allocate the new page.
     ///
     /// Return error if no new pages could be created, otherwise the page.
-    fn alloc_page(&mut self, rel: &Relation, page_id: PageNumber) -> Result<Page, Error> {
+    fn alloc_page(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Page, Error> {
         if self.page_table.len() >= self.size {
             println!("Buffer pool is at full capacity {}", self.size);
             self.victim()?;
         }
-        println!("Fething page {} from disk", page_id);
+        println!("Fething page {} from disk", page_num);
 
         let entry = Entry::default();
         entry.borrow_mut().pin();
 
         // Read the page from disk inside the buffer pool entry.
         let mut pager = Pager::open(&rel.full_path())?;
-        pager.read_page(page_id, &mut entry.borrow().page.borrow_mut().bytes_mut())?;
+        pager.read_page(page_num, &mut entry.borrow().page.borrow_mut().bytes_mut())?;
         let page = entry.borrow().page.clone();
 
         // Add page on cache.
-        self.page_table.insert(page_id, entry);
-        self.lru.pin(&page_id);
-        self.relation_data.insert(page_id, rel.clone());
+        self.page_table.insert(page_num, entry);
+        self.lru.pin(&page_num);
+        self.relation_data.insert(page_num, rel.clone());
 
         Ok(page)
     }
@@ -215,23 +215,23 @@ impl BufferPool {
     /// don't have any page id to victim. Otherwise the page will be removed from page table. If
     /// the choosen page is dirty victim will flush to disk before removing from page table.
     fn victim(&mut self) -> Result<(), Error> {
-        let page_id = self
+        let page_num = self
             .lru
             .victim()
             .expect("replacer does not contain any page id to victim");
 
-        println!("Page {} was chosen for victim", page_id);
+        println!("Page {} was chosen for victim", page_num);
 
-        let entry = self.get_entry(page_id)?;
+        let entry = self.get_entry(page_num)?;
 
         if entry.borrow().is_dirty {
-            println!("Flusing dirty page {} to disk before victim", page_id);
-            self.flush_page(page_id)?;
+            println!("Flusing dirty page {} to disk before victim", page_num);
+            self.flush_page(page_num)?;
         }
 
-        self.page_table.remove(&page_id).expect(&format!(
+        self.page_table.remove(&page_num).expect(&format!(
             "page {} was chosen for victim but does not exists on page map",
-            page_id
+            page_num
         ));
 
         Ok(())
@@ -239,11 +239,11 @@ impl BufferPool {
 
     /// Return the requested entry to the given page id. If the page does not exists on buffer pool
     /// get_page return Error::PageNotFound.
-    fn get_entry(&self, page_id: PageNumber) -> Result<Entry, Error> {
-        if let Some(entry) = self.page_table.get(&page_id) {
+    fn get_entry(&self, page_num: PageNumber) -> Result<Entry, Error> {
+        if let Some(entry) = self.page_table.get(&page_num) {
             return Ok(entry.clone());
         }
-        Err(Error::PageNotFound(page_id))
+        Err(Error::PageNotFound(page_num))
     }
 }
 
@@ -268,9 +268,9 @@ mod tests {
         }
 
         // Fill buffer pool cache
-        for page_id in 1..buffer_pool_size + 2 {
-            let _ = buffer.fetch_page(&relation, page_id as u32)?;
-            buffer.unpin_page(page_id as u32, false)?;
+        for page_num in 1..buffer_pool_size + 2 {
+            let _ = buffer.fetch_page(&relation, page_num as u32)?;
+            buffer.unpin_page(page_num as u32, false)?;
         }
 
         let page = buffer.fetch_page(&relation, 1)?;
@@ -294,15 +294,15 @@ mod tests {
         let _page = buffer.fetch_page(&relation, 1)?;
 
         // Fill buffer pool cache
-        for page_id in 1..buffer_pool_size + 1 {
+        for page_num in 1..buffer_pool_size + 1 {
             // Fetch some pages from disk to memory and make them
             // ready to victim.
             //
             // Note that since we fetch the page 1 before, after read
             // page 1 again and call unpin_page, the page 1 **should**
             // not be maked as ready for victim.
-            let _ = buffer.fetch_page(&relation, page_id as u32)?;
-            buffer.unpin_page(page_id as u32, false)?;
+            let _ = buffer.fetch_page(&relation, page_num as u32)?;
+            buffer.unpin_page(page_num as u32, false)?;
         }
 
         // Should victim some page and cache the new page.
