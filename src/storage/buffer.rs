@@ -3,8 +3,9 @@ use crate::storage::{pager, pager::PageNumber, pager::Pager, pager::PAGE_SIZE};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+use super::rel::Relation;
 
 /// Represents errors that buffer pool can have.
 #[derive(Debug)]
@@ -108,23 +109,6 @@ impl Debug for EntryData {
 
 /// A mutable reference counter to EntryData.
 type Entry = Rc<RefCell<EntryData>>;
-
-/// Relation provide all information that we need to know to physically access a database relation.
-#[derive(Clone)]
-pub struct Relation {
-    /// Name of database that this relation belongs.
-    pub db_name: String,
-
-    /// Name of this relation.
-    pub rel_name: String,
-}
-
-impl Relation {
-    /// Return the joined path of relation using the database and relation name.
-    pub fn full_path(&self) -> PathBuf {
-        Path::new(&self.db_name).join(&self.rel_name)
-    }
-}
 
 /// BufferPool is responsible for fetching database pages from the disk and storing them in memory.
 /// The BufferPool can also write dirty pages out to disk when it is either explicitly instructed to do so
