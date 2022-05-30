@@ -176,11 +176,10 @@ impl Pager {
     }
 
     /// Allocate an extra page on the file and returns the page number
-    pub fn allocate_page(&mut self) -> u32 {
-        // We simply increment the page number counter.
-        // read_page and write_page take care of the rest.
+    pub fn allocate_page(&mut self) -> Result<u32, Error> {
         self.total_pages += 1;
-        self.total_pages
+        self.write_page(self.total_pages, &[0; PAGE_SIZE])?;
+        Ok(self.total_pages)
     }
 
     /// Reads the header of database file and returns it in a byte array.
@@ -262,7 +261,7 @@ mod tests {
     #[test]
     fn test_first_page_not_override_header() -> Result<(), Error> {
         let mut pager = open_test_pager()?;
-        let page_number = pager.allocate_page();
+        let page_number = pager.allocate_page()?;
         let mem_page = [1; PAGE_SIZE];
         pager.write_page(page_number, &mem_page)?;
 
@@ -281,14 +280,14 @@ mod tests {
         {
             // Open empty database file and create a page.
             let mut pager = Pager::open(file.path())?;
-            let page_number = pager.allocate_page();
+            let page_number = pager.allocate_page()?;
             let page_data = [0; PAGE_SIZE];
             pager.write_page(page_number, &page_data)?;
         }
 
         // Open an already existed database file and create a new page.
         let mut pager = Pager::open(file.path())?;
-        let page_number = pager.allocate_page();
+        let page_number = pager.allocate_page()?;
         let page_data = [0; PAGE_SIZE];
         pager.write_page(page_number, &page_data)?;
 
@@ -302,7 +301,7 @@ mod tests {
         let total_pages = 20;
 
         for i in 0..total_pages {
-            let page_number: PageNumber = pager.allocate_page();
+            let page_number: PageNumber = pager.allocate_page()?;
             let page_data = [i; PAGE_SIZE];
             pager.write_page(page_number, &page_data)?;
         }
@@ -321,7 +320,7 @@ mod tests {
         // Test creating and reading multiple pages to assert
         // that the pager read the correct offset.
         for i in 0..total_pages {
-            let page_number: PageNumber = pager.allocate_page();
+            let page_number: PageNumber = pager.allocate_page()?;
             let page_data = [i; PAGE_SIZE];
             pager.write_page(page_number, &page_data)?;
 
