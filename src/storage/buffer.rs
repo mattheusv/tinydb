@@ -77,6 +77,9 @@ pub struct BufferData {
     /// The page number that the buffer is currenclty holding.
     page_num: PageNumber,
 
+    /// The relation owner of this buffer.
+    rel: Relation,
+
     /// Flag informing if the page buffer is dirty. If true, the buffer pool should flush the page
     /// contents to disk before victim.
     is_dirty: bool,
@@ -86,10 +89,11 @@ pub struct BufferData {
 }
 
 impl BufferData {
-    fn new(id: usize, page_num: PageNumber) -> Buffer {
+    fn new(id: usize, page_num: PageNumber, rel: Relation) -> Buffer {
         Rc::new(RefCell::new(Self {
             id,
             page_num,
+            rel,
             is_dirty: false,
             refcount: 0,
         }))
@@ -145,7 +149,7 @@ impl BufferPool {
         } else {
             if self.page_table.len() >= self.size {
                 println!("Buffer pool is at full capacity {}", self.size);
-                self.victim(rel)?;
+                self.victim()?;
             }
             assert!(
                 self.page_table.len() < self.size && self.buffer_table.len() < self.size,
@@ -162,7 +166,7 @@ impl BufferPool {
 
             // Add page on cache and pin the new buffer.
             self.page_table.push(Rc::new(RefCell::new(page)));
-            let buffer = BufferData::new(self.page_table.len(), page_num);
+            let buffer = BufferData::new(self.page_table.len(), page_num, rel.clone());
             self.pin_buffer(&buffer);
             self.buffer_table.insert(page_num, buffer.clone());
 
@@ -212,12 +216,12 @@ impl BufferPool {
     /// Physically write out a shared page to disk.
     ///
     /// Return error if the page could not be found in the page table, None otherwise.
-    pub fn flush_page(&mut self, rel: &Relation, page_num: PageNumber) -> Result<(), Error> {
-        let mut pager = Pager::open(&rel.full_path())?;
-
-        let buffer = self.get_buffer(page_num)?;
+    pub fn flush_buffer(&mut self, buffer: &Buffer) -> Result<(), Error> {
         let page = self.get_page(&buffer);
-        pager.write_page(page_num, &page.borrow().bytes())?;
+
+        let buffer = buffer.borrow();
+        let mut pager = Pager::open(&buffer.rel.full_path())?;
+        pager.write_page(buffer.page_num, &page.borrow().bytes())?;
 
         Ok(())
     }
@@ -225,7 +229,7 @@ impl BufferPool {
     /// Use the LRU replacement policy to choose a page to victim. This function panic if the LRU
     /// don't have any page id to victim. Otherwise the page will be removed from page table. If
     /// the choosen page is dirty victim will flush to disk before removing from page table.
-    fn victim(&mut self, rel: &Relation) -> Result<(), Error> {
+    fn victim(&mut self) -> Result<(), Error> {
         let page_num = self
             .lru
             .victim()
@@ -238,7 +242,7 @@ impl BufferPool {
 
         if buffer.borrow().is_dirty {
             println!("Flusing dirty page {} to disk before victim", page_num);
-            self.flush_page(rel, page_num)?;
+            self.flush_buffer(&buffer)?;
         }
 
         let bufid = buffer.borrow().id;
@@ -261,6 +265,8 @@ impl BufferPool {
 
 #[cfg(test)]
 mod tests {
+    use crate::storage::rel::RelationData;
+
     use super::pager::PAGE_SIZE;
     use super::*;
 
@@ -362,7 +368,7 @@ mod tests {
     fn test_relation(pages: usize) -> Relation {
         use rand::prelude::random;
 
-        let relation = Relation {
+        let relation = RelationData {
             db_name: std::env::temp_dir().to_str().unwrap().to_string(),
             rel_name: format!("tinydb-tempfile-test-{}", random::<i32>()).to_string(),
         };
@@ -375,6 +381,6 @@ mod tests {
             pager.write_page(page_number, &page_data).unwrap();
         }
 
-        relation
+        Rc::new(relation)
     }
 }
