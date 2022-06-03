@@ -255,6 +255,19 @@ impl BufferPool {
         Ok(())
     }
 
+    /// Physically write out a all shared pages stored on buffer pool to disk.
+    pub fn flush_all_buffers(&mut self) -> Result<(), Error> {
+        println!("Flushing all buffers to disk");
+        for (_, buf) in self.buffer_table.iter() {
+            let page = self.get_page(&buf);
+
+            let buf = buf.borrow();
+            let mut pager = Pager::open(&buf.rel.full_path())?;
+            pager.write_page(buf.page_num, &page.borrow().bytes())?;
+        }
+        Ok(())
+    }
+
     /// Use the LRU replacement policy to choose a page to victim. This function panic if the LRU
     /// don't have any page id to victim. Otherwise the page will be removed from page table. If
     /// the choosen page is dirty victim will flush to disk before removing from page table.
