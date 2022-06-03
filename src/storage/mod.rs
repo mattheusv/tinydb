@@ -1,5 +1,6 @@
 pub mod buffer;
-mod pager;
+pub mod bufpage;
+pub mod pager;
 pub mod rel;
 
 pub use buffer::BufferPool;
