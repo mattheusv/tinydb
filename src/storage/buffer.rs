@@ -2,6 +2,7 @@ use crate::lru::LRU;
 use crate::storage::{pager, pager::PageNumber, pager::Pager, pager::PAGE_SIZE};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -48,6 +49,28 @@ impl<const N: usize> Bytes<{ N }> {
         self.data = data;
     }
 
+    /// Write at bytes buffer from a vec. Panic if data.len() > N.
+    pub fn write_from_vec(&mut self, data: Vec<u8>) {
+        self.write(self.vec_to_array(data));
+    }
+
+    /// Write the comming data overrinding the bytes buffer starting at the given offset.
+    pub fn write_at(&mut self, data: &Vec<u8>, offset: usize) {
+        assert!(
+            data.len() <= self.data.len() + offset,
+            "Data overflow the current buffer size"
+        );
+
+        let mut idx_outer = 0;
+        for idx in offset..self.data.len() {
+            if idx_outer >= data.len() {
+                break;
+            }
+            self.data[idx] = data[idx_outer];
+            idx_outer += 1;
+        }
+    }
+
     /// Return the current bytes inside buffer.
     pub fn bytes(&self) -> [u8; N] {
         self.data
@@ -61,6 +84,12 @@ impl<const N: usize> Bytes<{ N }> {
     /// Resets the buffer to be empty, but it retains the underlying storage for use by future writes.
     pub fn reset(&mut self) {
         self.data = [0; N];
+    }
+
+    fn vec_to_array<T>(&self, v: Vec<T>) -> [T; N] {
+        v.try_into().unwrap_or_else(|v: Vec<T>| {
+            panic!("Expected a Vec of length {} but it was {}", N, v.len())
+        })
     }
 }
 
