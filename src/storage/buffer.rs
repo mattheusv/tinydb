@@ -411,6 +411,7 @@ mod tests {
         use rand::prelude::random;
 
         let relation = RelationData {
+            db_data: String::from(""),
             db_name: std::env::temp_dir().to_str().unwrap().to_string(),
             rel_name: format!("tinydb-tempfile-test-{}", random::<i32>()).to_string(),
         };
