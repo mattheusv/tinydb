@@ -1,6 +1,7 @@
 use crate::lru::LRU;
 use crate::storage::{pager::PageNumber, pager::Pager, pager::PAGE_SIZE};
 use anyhow::{bail, Result};
+use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -162,7 +163,7 @@ impl BufferPool {
     pub fn fetch_buffer(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
         if let Some(buffer) = self.buffer_table.get(&page_num) {
             let buffer = buffer.clone();
-            println!(
+            debug!(
                 "Page {} exists on memory on buffer {}",
                 page_num,
                 buffer.borrow().id
@@ -171,7 +172,7 @@ impl BufferPool {
             Ok(buffer)
         } else {
             if self.page_table.len() >= self.size {
-                println!("Buffer pool is at full capacity {}", self.size);
+                debug!("Buffer pool is at full capacity {}", self.size);
                 self.victim()?;
             }
             assert!(
@@ -180,7 +181,7 @@ impl BufferPool {
                 self.size
             );
 
-            println!("Fething page {} from disk", page_num);
+            debug!("Fething page {} from disk", page_num);
 
             // Create a new empty page and read the page data from disk.
             let mut page = Bytes::new();
@@ -251,7 +252,7 @@ impl BufferPool {
 
     /// Physically write out a all shared pages stored on buffer pool to disk.
     pub fn flush_all_buffers(&mut self) -> Result<()> {
-        println!("Flushing all buffers to disk");
+        debug!("Flushing all buffers to disk");
         for (_, buf) in self.buffer_table.iter() {
             let page = self.get_page(&buf);
 
@@ -271,13 +272,13 @@ impl BufferPool {
             .victim()
             .expect("replacer does not contain any page id to victim");
 
-        println!("Page {} was chosen for victim", page_num);
+        debug!("Page {} was chosen for victim", page_num);
 
         let buffer = self.get_buffer(page_num)?;
         let buffer = buffer.clone();
 
         if buffer.borrow().is_dirty {
-            println!("Flusing dirty page {} to disk before victim", page_num);
+            debug!("Flusing dirty page {} to disk before victim", page_num);
             self.flush_buffer(&buffer)?;
         }
 
