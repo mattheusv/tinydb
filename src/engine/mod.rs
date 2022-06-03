@@ -1,52 +1,16 @@
+use std::fs;
 use std::path::Path;
-use std::{fs, io};
 
-use crate::access;
 use crate::access::heap::{heap_insert, heap_scan, HeapTuple};
 use crate::cache::new_relation;
 use crate::catalog::heap;
-use crate::storage::buffer;
 use crate::storage::BufferPool;
+use anyhow::Result;
 use sqlparser::ast::{self, ColumnDef, ObjectName, Statement};
 use sqlparser::dialect::PostgreSqlDialect;
-use sqlparser::parser::{Parser, ParserError};
+use sqlparser::parser::Parser;
 
 const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
-
-#[derive(Debug)]
-pub enum Error {
-    ParserError(ParserError),
-
-    IO(io::Error),
-
-    Buffer(buffer::Error),
-
-    AM(access::heap::Error),
-}
-
-impl From<ParserError> for Error {
-    fn from(err: ParserError) -> Self {
-        Self::ParserError(err)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Self::IO(err)
-    }
-}
-
-impl From<buffer::Error> for Error {
-    fn from(err: buffer::Error) -> Self {
-        Self::Buffer(err)
-    }
-}
-
-impl From<access::heap::Error> for Error {
-    fn from(err: access::heap::Error) -> Self {
-        Self::AM(err)
-    }
-}
 
 pub struct Engine {
     buffer_pool: BufferPool,
@@ -70,7 +34,7 @@ impl Engine {
         }
     }
 
-    pub fn exec(&mut self, command: &str, db_name: &str) -> Result<(), Error> {
+    pub fn exec(&mut self, command: &str, db_name: &str) -> Result<()> {
         let ast = Parser::parse_sql(&DIALECT, command)?;
 
         for stmt in ast {
@@ -80,7 +44,7 @@ impl Engine {
         Ok(())
     }
 
-    fn exec_stmt(&mut self, db_name: &str, stmt: Statement) -> Result<(), Error> {
+    fn exec_stmt(&mut self, db_name: &str, stmt: Statement) -> Result<()> {
         match stmt {
             Statement::CreateDatabase { db_name, .. } => self.create_database(db_name),
             Statement::CreateTable { name, columns, .. } => {
@@ -99,7 +63,7 @@ impl Engine {
         }
     }
 
-    fn query(&mut self, db_name: &str, query: Box<ast::Query>) -> Result<(), Error> {
+    fn query(&mut self, db_name: &str, query: Box<ast::Query>) -> Result<()> {
         match query.body {
             ast::SetExpr::Select(select) => {
                 for table in select.from {
@@ -123,7 +87,7 @@ impl Engine {
         table_name: ObjectName,
         _: Vec<ast::Ident>,
         source: Box<ast::Query>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let rel = new_relation(&self.db_data, db_name, &table_name.0[0].to_string());
 
         match source.body {
@@ -155,18 +119,13 @@ impl Engine {
         Ok(())
     }
 
-    fn create_table(
-        &mut self,
-        db_name: &str,
-        name: ObjectName,
-        _: Vec<ColumnDef>,
-    ) -> Result<(), Error> {
+    fn create_table(&mut self, db_name: &str, name: ObjectName, _: Vec<ColumnDef>) -> Result<()> {
         let rel = new_relation(&self.db_data, db_name, &name.0[0].to_string());
         heap::heap_create(&mut self.buffer_pool, &rel)?;
         Ok(())
     }
 
-    fn create_database(&self, name: ObjectName) -> Result<(), Error> {
+    fn create_database(&self, name: ObjectName) -> Result<()> {
         let table_path = Path::new(&self.db_data).join(name.0[0].to_string());
         fs::create_dir(table_path)?;
         Ok(())
@@ -179,7 +138,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_engine() -> Result<(), Error> {
+    fn test_engine() -> Result<()> {
         {
             let buffer = BufferPool::new(120);
             let mut engine = Engine::new(buffer, "data");

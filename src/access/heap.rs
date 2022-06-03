@@ -1,30 +1,9 @@
 use crate::storage::{
-    buffer,
     bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
     rel::Relation,
     BufferPool,
 };
-
-#[derive(Debug)]
-pub enum Error {
-    /// Buffer pool related errors
-    BufferPool(buffer::Error),
-
-    /// An error that can be produced during (de)serializing.
-    Serialization(bincode::Error),
-}
-
-impl From<buffer::Error> for Error {
-    fn from(err: buffer::Error) -> Self {
-        Self::BufferPool(err)
-    }
-}
-
-impl From<bincode::Error> for Error {
-    fn from(err: bincode::Error) -> Self {
-        Self::Serialization(err)
-    }
-}
+use anyhow::Result;
 
 /// HeapTuple is an in-memory data structure that points to a tuple on some page.
 pub struct HeapTuple {
@@ -32,11 +11,7 @@ pub struct HeapTuple {
 }
 
 /// Insert a new tuple into a heap page of the given relation.
-pub fn heap_insert(
-    buffer_pool: &mut BufferPool,
-    rel: &Relation,
-    tuple: &HeapTuple,
-) -> Result<(), Error> {
+pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
     // TODO: Search for a free page to add the new tuple.
     let buffer = buffer_pool.fetch_buffer(rel, 1)?;
     let page = buffer_pool.get_page(&buffer);
@@ -48,7 +23,7 @@ pub fn heap_insert(
     Ok(())
 }
 
-pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<(), Error> {
+pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<()> {
     let buffer = buffer_pool.fetch_buffer(rel, 1)?;
     let page = buffer_pool.get_page(&buffer);
     let page_header = PageHeader::new(&page)?;

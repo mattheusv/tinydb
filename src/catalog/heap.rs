@@ -1,7 +1,8 @@
-use crate::storage::{buffer, bufpage::PageHeader, pager::PAGE_SIZE, rel::Relation, BufferPool};
+use crate::storage::{bufpage::PageHeader, pager::PAGE_SIZE, rel::Relation, BufferPool};
+use anyhow::Result;
 
 /// Create and initialize a new heap file relation to the given relation.
-pub fn heap_create(buffer: &mut BufferPool, rel: &Relation) -> Result<(), buffer::Error> {
+pub fn heap_create(buffer: &mut BufferPool, rel: &Relation) -> Result<()> {
     let buf_id = buffer.alloc_buffer(rel)?;
 
     let mut data = bincode::serialize(&PageHeader::default()).unwrap();

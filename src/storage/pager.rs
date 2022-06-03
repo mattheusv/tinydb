@@ -1,9 +1,9 @@
+use anyhow::{bail, Result};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
 use std::io::{
-    self,
     prelude::{Read, Write},
     Seek, SeekFrom,
 };
@@ -42,29 +42,20 @@ pub type MemPage = [u8; PAGE_SIZE];
 pub type PageNumber = u32;
 
 /// Represents errors that pager can have.
-#[derive(Debug, PartialEq)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 pub enum Error {
     /// Represents an invalid page number on database file.
+    #[error("")]
     IncorrectPageNumber,
-
-    /// Represents I/O related errors.
-    IO(io::ErrorKind),
 
     /// The database file is corrupted. Mostly the magic bytes
     /// is different than [MAGIC_BYTES].
+    #[error("")]
     CorruptedFile,
 
     /// Could not convert a type to bytes representation.
+    #[error("")]
     Serialize(String),
-
-    /// Could not convert a raw of bytes to a type.
-    Deserialize(String),
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Self::IO(err.kind())
-    }
 }
 
 /// A in memory representation of a pager file header.
@@ -85,8 +76,8 @@ impl Header {
     /// the end of array. If [Header] size is greater thatn [HEADER_SZIE]
     /// the function will panic. Truncate the slice can't be done because
     /// can lost values and generate bugs.
-    pub fn serialize(&self) -> Result<HeaderData, Error> {
-        let mut data = bincode::serialize(self).map_err(|err| Error::Serialize(err.to_string()))?;
+    pub fn serialize(&self) -> Result<HeaderData> {
+        let mut data = bincode::serialize(self)?;
         if data.len() < HEADER_SIZE {
             data.resize(HEADER_SIZE, 0);
         }
@@ -100,8 +91,8 @@ impl Header {
     }
 
     /// Convert a fixed size byte array to Header.
-    pub fn deserialize(data: &HeaderData) -> Result<Self, Error> {
-        bincode::deserialize(data).map_err(|err| Error::Deserialize(err.to_string()))
+    pub fn deserialize(data: &HeaderData) -> Result<Self> {
+        Ok(bincode::deserialize(data)?)
     }
 }
 
@@ -121,6 +112,7 @@ impl Default for Header {
 /// The Pager is very simple and always creates an in-memory copy of any page
 /// that is read (even if that page has already been read before).
 /// More specifically, pages are read into a MemPage structure.
+#[derive(Debug)]
 pub struct Pager {
     file: File,
     total_pages: u32,
@@ -133,7 +125,7 @@ impl Pager {
     /// header is correct. If the file is empty (which will happen if the
     /// pager is given a filename for a file that does not exist) then this
     /// function will initialize the file header using the default values.
-    pub fn open(filename: &Path) -> Result<Self, Error> {
+    pub fn open(filename: &Path) -> Result<Self> {
         let file = OpenOptions::new()
             .create(true)
             .read(true)
@@ -157,7 +149,7 @@ impl Pager {
     /// and updates the in-memory MemPage struct passed on page arg.
     /// Any changes done to a MemPage will not be effective until call
     /// the [write_page](Pager::write_page] with that MemPage.
-    pub fn read_page(&mut self, page_number: PageNumber, page: &mut MemPage) -> Result<(), Error> {
+    pub fn read_page(&mut self, page_number: PageNumber, page: &mut MemPage) -> Result<()> {
         self.validate_page(page_number)?;
         self.file.seek(SeekFrom::Start(self.offset(page_number)))?;
         let count = self.file.read(page)?;
@@ -167,7 +159,7 @@ impl Pager {
 
     /// Write a page to file. This pager writes the in-memory copy of a
     /// page (stored in a MemPage struct) back to disk.
-    pub fn write_page(&mut self, number: PageNumber, page: &MemPage) -> Result<(), Error> {
+    pub fn write_page(&mut self, number: PageNumber, page: &MemPage) -> Result<()> {
         self.validate_page(number)?;
         self.file.seek(SeekFrom::Start(self.offset(number)))?;
         let count = self.file.write(page)?;
@@ -176,7 +168,7 @@ impl Pager {
     }
 
     /// Allocate an extra page on the file and returns the page number
-    pub fn allocate_page(&mut self) -> Result<u32, Error> {
+    pub fn allocate_page(&mut self) -> Result<u32> {
         self.total_pages += 1;
         self.write_page(self.total_pages, &[0; PAGE_SIZE])?;
         Ok(self.total_pages)
@@ -185,23 +177,23 @@ impl Pager {
     /// Reads the header of database file and returns it in a byte array.
     /// Note that this function can be called even if the page size is unknown,
     /// since the chidb header always occupies the first 100 bytes of the file.
-    pub fn read_header(&mut self) -> Result<Header, Error> {
+    pub fn read_header(&mut self) -> Result<Header> {
         self.file.seek(SeekFrom::Start(0))?;
         let mut header = [0; HEADER_SIZE];
         self.file.read(&mut header)?;
-        Header::deserialize(&header)
+        Ok(Header::deserialize(&header)?)
     }
 
     /// Write the header on database file. Note that the write_header function will
     /// always override the current header data if exists.
-    pub fn write_header(&mut self, header: &Header) -> Result<(), Error> {
+    pub fn write_header(&mut self, header: &Header) -> Result<()> {
         self.file.seek(SeekFrom::Start(0))?;
         self.file.write(&header.serialize()?)?;
         Ok(())
     }
 
     /// Computes the number of pages in a file.
-    pub fn size(&self) -> Result<u32, Error> {
+    pub fn size(&self) -> Result<u32> {
         let len = self.file.metadata()?.len();
         if len == 0 || len as usize - HEADER_SIZE == 0 {
             // If len is equal 0 means that the file is empty.
@@ -217,9 +209,9 @@ impl Pager {
     }
 
     /// Check if a pager number is valid to this database file buffer.
-    fn validate_page(&self, page: PageNumber) -> Result<(), Error> {
+    fn validate_page(&self, page: PageNumber) -> Result<()> {
         if page > self.total_pages || page <= 0 {
-            return Err(Error::IncorrectPageNumber);
+            bail!(Error::IncorrectPageNumber);
         }
         Ok(())
     }
@@ -231,25 +223,25 @@ impl Pager {
     }
 
     /// Check if file buffer is empty.
-    fn is_empty(&self) -> Result<bool, Error> {
+    fn is_empty(&self) -> Result<bool> {
         Ok(self.file.metadata()?.len() == 0)
     }
 
     /// Check if the header data is valid on disk.
-    fn validate_header(&mut self) -> Result<(), Error> {
+    fn validate_header(&mut self) -> Result<()> {
         let header = self.read_header()?;
 
         // TODO: This is right? Seems not.
         if header.magic != MAGIC_BYTES.clone() {
-            return Err(Error::CorruptedFile);
+            bail!(Error::CorruptedFile);
         }
 
         Ok(())
     }
 
     /// Initialize the default header values.
-    fn initialize_header(&mut self) -> Result<(), Error> {
-        self.write_header(&Header::default())
+    fn initialize_header(&mut self) -> Result<()> {
+        Ok(self.write_header(&Header::default())?)
     }
 }
 
@@ -259,7 +251,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_first_page_not_override_header() -> Result<(), Error> {
+    fn test_first_page_not_override_header() -> Result<()> {
         let mut pager = open_test_pager()?;
         let page_number = pager.allocate_page()?;
         let mem_page = [1; PAGE_SIZE];
@@ -275,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn test_open_existed_database_file() -> Result<(), Error> {
+    fn test_open_existed_database_file() -> Result<()> {
         let file = NamedTempFile::new()?;
         {
             // Open empty database file and create a page.
@@ -296,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pager_size() -> Result<(), Error> {
+    fn test_pager_size() -> Result<()> {
         let mut pager = open_test_pager()?;
         let total_pages = 20;
 
@@ -312,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_read_pages() -> Result<(), Error> {
+    fn test_write_read_pages() -> Result<()> {
         let mut pager = open_test_pager()?;
 
         let total_pages = 20;
@@ -334,32 +326,36 @@ mod tests {
     }
 
     #[test]
-    fn test_read_invalid_page() -> Result<(), Error> {
+    fn test_read_invalid_page() -> Result<()> {
         let mut pager = open_test_pager()?;
         let mut page = [0; PAGE_SIZE];
         let result = pager.read_page(1, &mut page);
-        assert_eq!(Error::IncorrectPageNumber, result.unwrap_err());
+
+        let err = result.unwrap_err();
+        assert_eq!(Error::IncorrectPageNumber, err.downcast::<Error>().unwrap());
         Ok(())
     }
 
     #[test]
-    fn test_read_corrupted_header() -> Result<(), Error> {
+    fn test_read_corrupted_header() -> Result<()> {
         let mut file = NamedTempFile::new()?;
         file.write(&[0; HEADER_SIZE])?;
         let result = Pager::open(file.path());
-        assert!(matches!(result, Err(Error::CorruptedFile)));
+
+        let err = result.unwrap_err();
+        assert_eq!(Error::CorruptedFile, err.downcast::<Error>().unwrap());
         Ok(())
     }
 
     #[test]
-    fn test_open_new_pager() -> Result<(), Error> {
+    fn test_open_new_pager() -> Result<()> {
         let mut pager = open_test_pager()?;
         let header = pager.read_header()?;
         assert_eq!(header, Header::default());
         Ok(())
     }
 
-    fn open_test_pager() -> Result<Pager, Error> {
+    fn open_test_pager() -> Result<Pager> {
         let file = NamedTempFile::new()?;
         Pager::open(file.path())
     }
