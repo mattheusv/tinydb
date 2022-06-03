@@ -130,7 +130,7 @@ impl BufferData {
 }
 
 /// A mutable reference counter to BufferData.
-type Buffer = Rc<RefCell<BufferData>>;
+pub type Buffer = Rc<RefCell<BufferData>>;
 
 /// BufferPool is responsible for fetching database pages from the disk and storing them in memory.
 /// The BufferPool can also write dirty pages out to disk when it is either explicitly instructed to do so
