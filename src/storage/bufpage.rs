@@ -59,7 +59,6 @@ pub fn page_add_item(page: &Page, item: &Vec<u8>) -> Result<(), bincode::Error> 
 
     // Select the offset number to place the new item
     let item_id_offset = header.start_free_space as usize;
-    // let item_id_offset = header.start_free_space as usize + size_of::<ItemId>();
     let item_id = ItemId {
         offset: header.end_free_space - item.len() as u16,
         length: item.len() as u16,
@@ -71,7 +70,6 @@ pub fn page_add_item(page: &Page, item: &Vec<u8>) -> Result<(), bincode::Error> 
 
     // Adjust the page header
     header.start_free_space = (item_id_offset + size_of::<ItemId>()) as u16;
-    // header.start_free_space = item_id_offset as u16;
     header.end_free_space = item_id.offset;
 
     // Write the adjusted page header at the in-memory page.
