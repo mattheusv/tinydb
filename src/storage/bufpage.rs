@@ -49,6 +49,7 @@ pub struct ItemId {
     pub length: u16,
 }
 
+/// Size of an item id on heap page.
 pub const ITEM_ID_SIZE: usize = size_of::<ItemId>();
 
 /// Add a new item to a page. The page header start_free_space and end_free_space is also updated
@@ -105,5 +106,18 @@ mod tests {
         assert_eq!(header.end_free_space, 8188);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_item_id_size() {
+        assert_eq!(ITEM_ID_SIZE, 4, "Item id size should have 4 bytes long");
+    }
+
+    #[test]
+    fn test_page_header_size() {
+        assert_eq!(
+            PAGE_HEADER_SIZE, 24,
+            "Page header size should have 24 bytes long"
+        );
     }
 }
