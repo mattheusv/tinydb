@@ -1,5 +1,5 @@
 use crate::lru::LRU;
-use crate::storage::{pager::PageNumber, pager::Pager, pager::PAGE_SIZE};
+use crate::storage::{pager::PageNumber, pager::PAGE_SIZE};
 use anyhow::{bail, Result};
 use log::debug;
 use std::cell::RefCell;
@@ -185,8 +185,9 @@ impl BufferPool {
 
             // Create a new empty page and read the page data from disk.
             let mut page = Bytes::new();
-            let mut pager = Pager::open(&rel.full_path())?;
-            pager.read_page(page_num, &mut page.bytes_mut())?;
+            rel.borrow_mut()
+                .pager
+                .read_page(page_num, &mut page.bytes_mut())?;
 
             // Add page on cache and pin the new buffer.
             self.page_table.push(Rc::new(RefCell::new(page)));
@@ -210,8 +211,7 @@ impl BufferPool {
     ///
     /// Return error if no new pages could be created, otherwise the buffer.
     pub fn alloc_buffer(&mut self, rel: &Relation) -> Result<Buffer> {
-        let mut pager = Pager::open(&rel.full_path())?;
-        let page_num = pager.allocate_page()?;
+        let page_num = rel.borrow_mut().pager.allocate_page()?;
         self.fetch_buffer(rel, page_num)
     }
 
@@ -244,8 +244,11 @@ impl BufferPool {
         let page = self.get_page(&buffer);
 
         let buffer = buffer.borrow();
-        let mut pager = Pager::open(&buffer.rel.full_path())?;
-        pager.write_page(buffer.page_num, &page.borrow().bytes())?;
+        buffer
+            .rel
+            .borrow_mut()
+            .pager
+            .write_page(buffer.page_num, &page.borrow().bytes())?;
 
         Ok(())
     }
@@ -257,8 +260,10 @@ impl BufferPool {
             let page = self.get_page(&buf);
 
             let buf = buf.borrow();
-            let mut pager = Pager::open(&buf.rel.full_path())?;
-            pager.write_page(buf.page_num, &page.borrow().bytes())?;
+            buf.rel
+                .borrow_mut()
+                .pager
+                .write_page(buf.page_num, &page.borrow().bytes())?;
         }
         Ok(())
     }
@@ -404,20 +409,23 @@ mod tests {
     fn test_relation(pages: usize) -> Relation {
         use rand::prelude::random;
 
-        let relation = RelationData {
-            db_data: String::from(""),
-            db_name: std::env::temp_dir().to_str().unwrap().to_string(),
-            rel_name: format!("tinydb-tempfile-test-{}", random::<i32>()).to_string(),
-        };
+        let db_data = String::from("");
+        let db_name = std::env::temp_dir().to_str().unwrap().to_string();
+        let rel_name = format!("tinydb-tempfile-test-{}", random::<i32>()).to_string();
 
-        let mut pager = Pager::open(&relation.full_path()).unwrap();
+        let relation =
+            RelationData::open(&db_data, &db_name, &rel_name).expect("Error to open relation");
 
         for i in 0..pages {
-            let page_number = pager.allocate_page().unwrap();
+            let page_number = relation.borrow_mut().pager.allocate_page().unwrap();
             let page_data = [i as u8; PAGE_SIZE];
-            pager.write_page(page_number, &page_data).unwrap();
+            relation
+                .borrow_mut()
+                .pager
+                .write_page(page_number, &page_data)
+                .unwrap();
         }
 
-        Rc::new(relation)
+        relation
     }
 }

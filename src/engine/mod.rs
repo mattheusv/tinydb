@@ -2,8 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::access::heap::{heap_insert, heap_scan, HeapTuple};
-use crate::cache::new_relation;
 use crate::catalog::heap;
+use crate::storage::rel::RelationData;
 use crate::storage::BufferPool;
 use anyhow::Result;
 use sqlparser::ast::{self, ColumnDef, ObjectName, Statement};
@@ -69,7 +69,7 @@ impl Engine {
                 for table in select.from {
                     match table.relation {
                         ast::TableFactor::Table { name, .. } => {
-                            let rel = new_relation(&self.db_data, db_name, &name.0[0].value);
+                            let rel = RelationData::open(&self.db_data, db_name, &name.0[0].value)?;
                             heap_scan(&mut self.buffer_pool, &rel)?;
                         }
                         _ => todo!(),
@@ -88,7 +88,7 @@ impl Engine {
         _: Vec<ast::Ident>,
         source: Box<ast::Query>,
     ) -> Result<()> {
-        let rel = new_relation(&self.db_data, db_name, &table_name.0[0].to_string());
+        let rel = RelationData::open(&self.db_data, db_name, &table_name.0[0].to_string())?;
 
         match source.body {
             ast::SetExpr::Values(values) => {
@@ -120,7 +120,7 @@ impl Engine {
     }
 
     fn create_table(&mut self, db_name: &str, name: ObjectName, _: Vec<ColumnDef>) -> Result<()> {
-        let rel = new_relation(&self.db_data, db_name, &name.0[0].to_string());
+        let rel = RelationData::open(&self.db_data, db_name, &name.0[0].to_string())?;
         heap::heap_create(&mut self.buffer_pool, &rel)?;
         Ok(())
     }
