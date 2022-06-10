@@ -24,6 +24,7 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
 }
 
 pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<()> {
+    // TODO: Iterate over all pages on relation
     let buffer = buffer_pool.fetch_buffer(rel, 1)?;
     let page = buffer_pool.get_page(&buffer);
     let page_header = PageHeader::new(&page)?;
