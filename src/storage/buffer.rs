@@ -161,8 +161,7 @@ impl BufferPool {
     ///
     /// The returned buffer is pinned and is already marked as holding the desired page.
     pub fn fetch_buffer(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
-        if let Some(buffer) = self.buffer_table.get(&page_num) {
-            let buffer = buffer.clone();
+        if let Ok(buffer) = self.get_buffer(page_num) {
             debug!(
                 "Page {} exists on memory on buffer {}",
                 page_num,
