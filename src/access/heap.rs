@@ -1,5 +1,6 @@
 use crate::storage::{
     bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
+    freespace,
     rel::Relation,
     BufferPool,
 };
@@ -12,8 +13,7 @@ pub struct HeapTuple {
 
 /// Insert a new tuple into a heap page of the given relation.
 pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
-    // TODO: Search for a free page to add the new tuple.
-    let buffer = buffer_pool.fetch_buffer(rel, 1)?;
+    let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
     let page = buffer_pool.get_page(&buffer);
 
     page_add_item(&page, &tuple.data)?;
