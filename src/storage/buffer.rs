@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::rc::Rc;
 
 use super::rel::Relation;
@@ -98,11 +99,8 @@ pub struct BufferData {
     /// Buffer index number.
     id: usize,
 
-    /// The page number that the buffer is currenclty holding.
-    page_num: PageNumber,
-
-    /// The relation owner of this buffer.
-    rel: Relation,
+    /// Page identifier contained in buffer.
+    tag: BufferTag,
 
     /// Flag informing if the page buffer is dirty. If true, the buffer pool should flush the page
     /// contents to disk before victim.
@@ -113,16 +111,49 @@ pub struct BufferData {
 }
 
 impl BufferData {
-    fn new(id: usize, page_num: PageNumber, rel: Relation) -> Buffer {
+    fn new(id: usize, tag: BufferTag) -> Buffer {
         Rc::new(RefCell::new(Self {
             id,
-            page_num,
-            rel,
+            tag,
             is_dirty: false,
             refcount: 0,
         }))
     }
 }
+
+/// Buffer tag identifies which relation the buffer belong.
+#[derive(Clone)]
+struct BufferTag {
+    /// Number of page on disk.
+    page_num: PageNumber,
+
+    /// Owner relation of page.
+    rel: Relation,
+}
+
+impl Hash for BufferTag {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let rel = self.rel.borrow();
+        state.write_u32(self.page_num);
+        state.write(rel.db_data.as_bytes());
+        state.write(rel.db_name.as_bytes());
+        state.write(rel.rel_name.as_bytes());
+    }
+}
+
+impl PartialEq for BufferTag {
+    fn eq(&self, other: &Self) -> bool {
+        let rel = self.rel.borrow();
+        let other_rel = other.rel.borrow();
+
+        (self.page_num == other.page_num)
+            && (rel.db_data == other_rel.db_data)
+            && (rel.db_name == other_rel.db_name)
+            && (rel.rel_name == other_rel.rel_name)
+    }
+}
+
+impl Eq for BufferTag {}
 
 /// A mutable reference counter to BufferData.
 pub type Buffer = Rc<RefCell<BufferData>>;
@@ -132,7 +163,7 @@ pub type Buffer = Rc<RefCell<BufferData>>;
 /// or when it needs to evict a page to make space for a new page.
 pub struct BufferPool {
     /// Replacer used to find a page that can be removed from memory.
-    lru: LRU<PageNumber>,
+    lru: LRU<BufferTag>,
 
     /// Size of buffer pool.
     size: usize,
@@ -140,8 +171,8 @@ pub struct BufferPool {
     /// An array of page blocks.
     page_table: Vec<Page>,
 
-    /// A map of page number to a page buffer descriptor
-    buffer_table: HashMap<PageNumber, Buffer>,
+    /// A map of buffer tag to a page buffer descriptor
+    buffer_table: HashMap<BufferTag, Buffer>,
 }
 
 impl BufferPool {
@@ -161,7 +192,11 @@ impl BufferPool {
     ///
     /// The returned buffer is pinned and is already marked as holding the desired page.
     pub fn fetch_buffer(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
-        if let Ok(buffer) = self.get_buffer(page_num) {
+        let buf_tag = BufferTag {
+            page_num,
+            rel: rel.clone(),
+        };
+        if let Ok(buffer) = self.get_buffer(&buf_tag) {
             debug!(
                 "Page {} exists on memory on buffer {}",
                 page_num,
@@ -190,9 +225,9 @@ impl BufferPool {
 
             // Add page on cache and pin the new buffer.
             self.page_table.push(Rc::new(RefCell::new(page)));
-            let buffer = BufferData::new(self.page_table.len(), page_num, rel.clone());
+            let buffer = BufferData::new(self.page_table.len(), buf_tag.clone());
             self.pin_buffer(&buffer);
-            self.buffer_table.insert(page_num, buffer.clone());
+            self.buffer_table.insert(buf_tag, buffer.clone());
 
             Ok(buffer)
         }
@@ -224,7 +259,7 @@ impl BufferPool {
         buffer.refcount -= 1;
 
         if buffer.refcount == 0 {
-            self.lru.unpin(&buffer.page_num);
+            self.lru.unpin(&buffer.tag);
         }
         Ok(())
     }
@@ -233,7 +268,7 @@ impl BufferPool {
     fn pin_buffer(&mut self, buffer: &Buffer) {
         let mut buffer = buffer.borrow_mut();
         buffer.refcount += 1;
-        self.lru.pin(&buffer.page_num);
+        self.lru.pin(&buffer.tag);
     }
 
     /// Physically write out a shared page to disk.
@@ -244,10 +279,11 @@ impl BufferPool {
 
         let buffer = buffer.borrow();
         buffer
+            .tag
             .rel
             .borrow_mut()
             .pager
-            .write_page(buffer.page_num, &page.borrow().bytes())?;
+            .write_page(buffer.tag.page_num, &page.borrow().bytes())?;
 
         Ok(())
     }
@@ -259,10 +295,11 @@ impl BufferPool {
             let page = self.get_page(&buf);
 
             let buf = buf.borrow();
-            buf.rel
+            buf.tag
+                .rel
                 .borrow_mut()
                 .pager
-                .write_page(buf.page_num, &page.borrow().bytes())?;
+                .write_page(buf.tag.page_num, &page.borrow().bytes())?;
         }
         Ok(())
     }
@@ -271,35 +308,38 @@ impl BufferPool {
     /// don't have any page id to victim. Otherwise the page will be removed from page table. If
     /// the choosen page is dirty victim will flush to disk before removing from page table.
     fn victim(&mut self) -> Result<()> {
-        let page_num = self
+        let buf_tag = self
             .lru
             .victim()
             .expect("replacer does not contain any page id to victim");
 
-        debug!("Page {} was chosen for victim", page_num);
+        debug!("Page {} was chosen for victim", buf_tag.page_num);
 
-        let buffer = self.get_buffer(page_num)?;
+        let buffer = self.get_buffer(&buf_tag)?;
         let buffer = buffer.clone();
 
         if buffer.borrow().is_dirty {
-            debug!("Flusing dirty page {} to disk before victim", page_num);
+            debug!(
+                "Flusing dirty page {} to disk before victim",
+                buf_tag.page_num
+            );
             self.flush_buffer(&buffer)?;
         }
 
         let bufid = buffer.borrow().id;
         self.page_table.remove(bufid);
-        self.buffer_table.remove(&page_num);
+        self.buffer_table.remove(&buf_tag);
 
         Ok(())
     }
 
     /// Return the requested buffer descriptor to the given page id. If the page does not exists on buffer pool
     /// return Error::PageNotFound.
-    fn get_buffer(&self, page_num: PageNumber) -> Result<Buffer> {
-        if let Some(buffer) = self.buffer_table.get(&page_num) {
+    fn get_buffer(&self, tag: &BufferTag) -> Result<Buffer> {
+        if let Some(buffer) = self.buffer_table.get(tag) {
             Ok(buffer.clone())
         } else {
-            bail!(Error::PageNotFound(page_num))
+            bail!(Error::PageNotFound(tag.page_num))
         }
     }
 }
