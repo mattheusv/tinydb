@@ -120,8 +120,12 @@ impl Engine {
     }
 
     fn create_table(&mut self, db_name: &str, name: ObjectName, _: Vec<ColumnDef>) -> Result<()> {
-        let rel = RelationData::open(&self.db_data, db_name, &name.0[0].to_string())?;
-        heap::heap_create(&mut self.buffer_pool, &rel)?;
+        heap::heap_create(
+            &mut self.buffer_pool,
+            &self.db_data,
+            db_name,
+            &name.0[0].to_string(),
+        )?;
         Ok(())
     }
 
