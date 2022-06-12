@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::access::heap::{heap_insert, heap_scan, HeapTuple};
-use crate::catalog::heap;
+use crate::catalog::{heap, Catalog};
 use crate::storage::rel::RelationData;
 use crate::storage::BufferPool;
 use anyhow::Result;
@@ -14,7 +14,7 @@ const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
 pub struct Engine {
     buffer_pool: BufferPool,
-
+    catalog: Catalog,
     db_data: String,
 }
 
@@ -30,6 +30,7 @@ impl Engine {
     pub fn new(buffer_pool: BufferPool, db_data: &str) -> Self {
         Self {
             buffer_pool,
+            catalog: Catalog::new(db_data),
             db_data: db_data.to_string(),
         }
     }
@@ -69,7 +70,14 @@ impl Engine {
                 for table in select.from {
                     match table.relation {
                         ast::TableFactor::Table { name, .. } => {
-                            let rel = RelationData::open(&self.db_data, db_name, &name.0[0].value)?;
+                            let rel_name = name.0[0].to_string();
+                            let oid = self.catalog.get_oid_relation(
+                                &mut self.buffer_pool,
+                                db_name,
+                                &rel_name,
+                            )?;
+
+                            let rel = RelationData::open(oid, &self.db_data, db_name, &rel_name)?;
                             heap_scan(&mut self.buffer_pool, &rel)?;
                         }
                         _ => todo!(),
@@ -88,7 +96,12 @@ impl Engine {
         _: Vec<ast::Ident>,
         source: Box<ast::Query>,
     ) -> Result<()> {
-        let rel = RelationData::open(&self.db_data, db_name, &table_name.0[0].to_string())?;
+        let rel_name = table_name.0[0].to_string();
+        let oid = self
+            .catalog
+            .get_oid_relation(&mut self.buffer_pool, db_name, &rel_name)?;
+
+        let rel = RelationData::open(oid, &self.db_data, db_name, &rel_name)?;
 
         match source.body {
             ast::SetExpr::Values(values) => {

@@ -9,7 +9,10 @@ use crate::{
 };
 use anyhow::Result;
 
-use super::pg_class::PgClass;
+use super::{
+    new_relation_oid,
+    pg_class::{self, PgClass},
+};
 
 /// Create a new cataloged heap relation.
 pub fn heap_create(
@@ -18,11 +21,14 @@ pub fn heap_create(
     db_name: &str,
     rel_name: &str,
 ) -> Result<()> {
+    // Create a new unique oid to the new heap relation.
+    let new_oid = new_relation_oid(db_data, db_name);
+
     // Create a new relation and initialize a empty pager handle.
-    let new_rel = RelationData::open(db_data, db_name, rel_name)?;
+    let new_rel = RelationData::open(new_oid, db_data, db_name, rel_name)?;
 
     // Open pg_class relation to store the new relation
-    let pg_class = RelationData::open(db_data, db_name, "pg_class")?;
+    let pg_class = RelationData::open(pg_class::RELATION_OID, db_data, db_name, "pg_class")?;
 
     // Now create an entry in pg_class for the relation.
     add_new_relation_tuple(buffer, &pg_class, &new_rel)?;
@@ -48,13 +54,16 @@ fn add_new_relation_tuple(
         initialize_default_page_header(buffer, pg_class)?;
     }
 
+    let new_rel = new_rel.borrow();
+
     // Now insert a new tuple on pg_class containing the new relation information.
     heap_insert(
         buffer,
         pg_class,
         &HeapTuple {
             data: bincode::serialize(&PgClass {
-                relname: new_rel.borrow().rel_name.clone(),
+                oid: new_rel.oid,
+                relname: new_rel.rel_name.clone(),
             })?,
         },
     )?;

@@ -1,8 +1,11 @@
-use crate::storage::{
-    bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
-    freespace,
-    rel::Relation,
-    BufferPool,
+use crate::{
+    catalog::pg_class::PgClass,
+    storage::{
+        bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
+        freespace,
+        rel::Relation,
+        BufferPool,
+    },
 };
 use anyhow::Result;
 
@@ -24,6 +27,25 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
 }
 
 pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<()> {
+    heap_iter(buffer_pool, rel, |tuple| -> Result<()> {
+        if rel.borrow().rel_name == "pg_class" {
+            let value = bincode::deserialize::<PgClass>(&tuple)?;
+            println!("-> value: {:?}", value);
+        } else {
+            let value = bincode::deserialize::<i32>(&tuple)?;
+            println!("-> value: {}", value);
+        }
+
+        Ok(())
+    })
+}
+
+/// Iterate over all heap pages and heap tuples to the given relation calling function f to each
+/// tuple in a page.
+pub fn heap_iter<F>(buffer_pool: &mut BufferPool, rel: &Relation, mut f: F) -> Result<()>
+where
+    F: FnMut(&[u8]) -> Result<()>,
+{
     // TODO: Iterate over all pages on relation
     let buffer = buffer_pool.fetch_buffer(rel, 1)?;
     let page = buffer_pool.get_page(&buffer);
@@ -34,16 +56,11 @@ pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<()> {
     let item_id_data = &page_data[PAGE_HEADER_SIZE..page_header.start_free_space as usize];
 
     let (item_id_data, _) = item_id_data.as_chunks::<ITEM_ID_SIZE>();
-    let mut result = Vec::with_capacity(item_id_data.len());
 
     for data in item_id_data {
-        result.push(bincode::deserialize::<ItemId>(&data.to_vec())?);
-    }
-
-    for item_id in result {
+        let item_id = bincode::deserialize::<ItemId>(&data.to_vec())?;
         let data = &page_data[item_id.offset as usize..(item_id.offset + item_id.length) as usize];
-        let value = bincode::deserialize::<i32>(&data)?;
-        println!("-> value: {}", value);
+        f(data)?;
     }
 
     buffer_pool.unpin_buffer(buffer, false)?;

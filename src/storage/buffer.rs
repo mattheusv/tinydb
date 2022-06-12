@@ -346,7 +346,7 @@ impl BufferPool {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::rel::RelationData;
+    use crate::{catalog::new_relation_oid, storage::rel::RelationData};
 
     use super::*;
 
@@ -452,8 +452,9 @@ mod tests {
         let db_name = std::env::temp_dir().to_str().unwrap().to_string();
         let rel_name = format!("tinydb-tempfile-test-{}", random::<i32>()).to_string();
 
+        let oid = new_relation_oid(&db_data, &db_name);
         let relation =
-            RelationData::open(&db_data, &db_name, &rel_name).expect("Error to open relation");
+            RelationData::open(oid, &db_data, &db_name, &rel_name).expect("Error to open relation");
 
         for i in 0..pages {
             let page_number = relation.borrow_mut().pager.allocate_page().unwrap();
