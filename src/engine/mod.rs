@@ -151,19 +151,24 @@ impl Engine {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
+    use crate::initdb::init_database;
+    use tempfile::tempdir;
 
     #[test]
     fn test_engine() -> Result<()> {
         {
-            let buffer = BufferPool::new(120);
-            let mut engine = Engine::new(buffer, "data");
+            let db_data = tempdir()?;
+            let db_name = "test_engine";
 
-            engine.exec("CREATE DATABASE testing;", "")?;
-            engine.exec("CREATE TABLE t(a int);", "testing")?;
-            engine.exec("INSERT INTO t(a) VALUES(87);", "testing")?;
-            engine.exec("SELECT * FROM t;", "testing")?;
+            init_database(&db_data.path().to_path_buf(), db_name)?;
+
+            let buffer = BufferPool::new(120);
+            let mut engine = Engine::new(buffer, &db_data.path().to_string_lossy().to_string());
+
+            engine.exec("CREATE TABLE t(a int);", db_name)?;
+            engine.exec("INSERT INTO t(a) VALUES(87);", db_name)?;
+            engine.exec("SELECT * FROM t;", db_name)?;
         }
 
         Ok(())
