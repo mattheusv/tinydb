@@ -132,12 +132,18 @@ impl Engine {
         Ok(())
     }
 
-    fn create_table(&mut self, db_name: &str, name: ObjectName, _: Vec<ColumnDef>) -> Result<()> {
+    fn create_table(
+        &mut self,
+        db_name: &str,
+        name: ObjectName,
+        columns: Vec<ColumnDef>,
+    ) -> Result<()> {
         heap::heap_create(
             &mut self.buffer_pool,
             &self.db_data,
             db_name,
             &name.0[0].to_string(),
+            columns,
         )?;
         Ok(())
     }

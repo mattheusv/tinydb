@@ -1,5 +1,8 @@
 use crate::{
-    access::heap::{heap_insert, HeapTuple},
+    access::{
+        heap::{heap_insert, HeapTuple},
+        tuple::TupleDesc,
+    },
     storage::{
         bufpage::PageHeader,
         pager::PAGE_SIZE,
@@ -8,9 +11,11 @@ use crate::{
     },
 };
 use anyhow::Result;
+use sqlparser::ast::ColumnDef;
 
 use super::{
     new_relation_oid,
+    pg_attribute::{self, PgAttribute},
     pg_class::{self, PgClass},
 };
 
@@ -20,12 +25,25 @@ pub fn heap_create(
     db_data: &str,
     db_name: &str,
     rel_name: &str,
+    attrs: Vec<ColumnDef>,
 ) -> Result<()> {
     // Create a new unique oid to the new heap relation.
     let new_oid = new_relation_oid(db_data, db_name);
 
     // Create a new relation and initialize a empty pager handle.
     let new_rel = RelationData::open(new_oid, db_data, db_name, rel_name)?;
+
+    let mut tupledesc = TupleDesc::default();
+    for (i, attr) in attrs.iter().enumerate() {
+        tupledesc.attrs.push(PgAttribute {
+            attrelid: new_oid,
+            attname: attr.name.to_string(),
+            attnum: i,
+        })
+    }
+
+    // Now add tuples to pg_attribute for the attributes in our new relation.
+    add_new_attribute_tuples(buffer, &new_rel, &tupledesc)?;
 
     // Open pg_class relation to store the new relation
     let pg_class = RelationData::open(pg_class::RELATION_OID, db_data, db_name, "pg_class")?;
@@ -36,6 +54,40 @@ pub fn heap_create(
     // Now that the new relation is already stored on pg_class, initialize the default page header
     // data
     initialize_default_page_header(buffer, &new_rel)?;
+
+    Ok(())
+}
+
+/// Registers the new relation's schema by adding tuples to pg_attribute.
+fn add_new_attribute_tuples(
+    buffer: &mut BufferPool,
+    rel: &Relation,
+    tupledesc: &TupleDesc,
+) -> Result<()> {
+    let rel = rel.borrow();
+
+    // Open pg_attribute relation to store the new relation attributes.
+    let pg_attribute = RelationData::open(
+        pg_attribute::RELATION_OID,
+        &rel.db_data,
+        &rel.db_name,
+        "pg_attribute",
+    )?;
+
+    // Initialize the pg_attribute page header if its new.
+    // TODO: All catalog tables shoulb be bootstrapped at  inidbb process.
+    if pg_attribute.borrow().pager.size()? == 0 {
+        initialize_default_page_header(buffer, &pg_attribute)?;
+    }
+
+    // Now insert a new tuple on pg_attribute containing the new attributes information.
+    heap_insert(
+        buffer,
+        &pg_attribute,
+        &HeapTuple {
+            data: bincode::serialize(&tupledesc.attrs)?,
+        },
+    )?;
 
     Ok(())
 }

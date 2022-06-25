@@ -1,5 +1,5 @@
 use crate::{
-    catalog::pg_class::PgClass,
+    catalog::{pg_attribute::PgAttribute, pg_class::PgClass},
     storage::{
         bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
         freespace,
@@ -28,12 +28,19 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
 
 pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<()> {
     heap_iter(buffer_pool, rel, |tuple| -> Result<()> {
-        if rel.borrow().rel_name == "pg_class" {
-            let value = bincode::deserialize::<PgClass>(&tuple)?;
-            println!("-> value: {:?}", value);
-        } else {
-            let value = bincode::deserialize::<i32>(&tuple)?;
-            println!("-> value: {}", value);
+        match rel.borrow().rel_name.as_str() {
+            "pg_class" => {
+                let value = bincode::deserialize::<PgClass>(&tuple)?;
+                println!("-> value: {:?}", value);
+            }
+            "pg_attribute" => {
+                let value = bincode::deserialize::<Vec<PgAttribute>>(&tuple)?;
+                println!("-> value: {:?}", value);
+            }
+            _ => {
+                let value = bincode::deserialize::<i32>(&tuple)?;
+                println!("-> value: {}", value);
+            }
         }
 
         Ok(())

@@ -11,6 +11,7 @@ use crate::{
 use self::pg_class::PgClass;
 
 pub mod heap;
+pub mod pg_attribute;
 pub mod pg_class;
 
 /// Genereate a new relation oid that is unique within the database of the given db data.
@@ -56,6 +57,7 @@ impl Catalog {
         // TODO: The catalog relations should also be stored inside pg_class.
         match rel_name {
             "pg_class" => Ok(pg_class::RELATION_OID),
+            "pg_attribute" => Ok(pg_attribute::RELATION_OID),
             _ => {
                 let pg_class_rel =
                     RelationData::open(pg_class::RELATION_OID, &self.db_data, db_name, "pg_class")?;
