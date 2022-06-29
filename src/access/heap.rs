@@ -1,5 +1,3 @@
-use std::io::{BufReader, Read};
-
 use crate::{
     catalog::{pg_attribute::PgAttribute, pg_class::PgClass},
     storage::{
@@ -39,7 +37,7 @@ pub fn heap_scan(
     rel: &Relation,
     tuple_desc: &TupleDesc,
 ) -> Result<()> {
-    heap_iter(buffer_pool, rel, |tuple| -> Result<()> {
+    heap_iter(buffer_pool, rel, |mut tuple| -> Result<()> {
         match rel.borrow().rel_name.as_str() {
             "pg_class" => {
                 let value = bincode::deserialize::<PgClass>(&tuple)?;
@@ -50,22 +48,22 @@ pub fn heap_scan(
                 println!("-> value: {:?}", value);
             }
             _ => {
-                let mut buffer = BufReader::with_capacity(tuple.len(), tuple);
                 for (i, attr) in tuple_desc.attrs.iter().enumerate() {
                     assert_eq!(
                         attr.attnum, i,
                         "Expected equal tuple desc attr num to be equal loop index"
                     );
-                    let mut attr_value = vec![0; attr.attlen];
-                    let readen = buffer.read(&mut attr_value.as_mut_slice())?;
 
-                    if readen == 0 {
+                    if tuple.len() < attr.attlen {
                         // Means that the value does not exist on tuple.
                         println!("{} : NULL", attr.attname);
                     } else {
                         // Value exists on tuple, so deserialize it.
+                        let attr_value = &tuple[..attr.attlen];
                         let value = bincode::deserialize::<i32>(&attr_value)?;
                         println!("{} : {}", attr.attname, value);
+
+                        tuple = &tuple[attr.attlen..];
                     }
                 }
             }
