@@ -86,12 +86,17 @@ where
 
     let page_data = page.borrow().bytes();
 
+    // Get a reference to the raw data of item_id_data .
     let item_id_data = &page_data[PAGE_HEADER_SIZE..page_header.start_free_space as usize];
 
+    // Split the raw item_id_data to a list of ItemId.
     let (item_id_data, _) = item_id_data.as_chunks::<ITEM_ID_SIZE>();
 
     for data in item_id_data {
+        // Deserialize a single ItemId from the list item_id_data.
         let item_id = bincode::deserialize::<ItemId>(&data.to_vec())?;
+
+        // Slice the raw page to get a refenrece to a tuple inside the page.
         let data = &page_data[item_id.offset as usize..(item_id.offset + item_id.length) as usize];
         f(data)?;
     }
