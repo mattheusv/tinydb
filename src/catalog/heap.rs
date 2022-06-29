@@ -49,7 +49,7 @@ pub fn heap_create(
     add_new_attribute_tuples(buffer, &new_rel, &tupledesc)?;
 
     // Open pg_class relation to store the new relation
-    let pg_class = RelationData::open(pg_class::RELATION_OID, db_data, db_name, "pg_class")?;
+    let pg_class = PgClass::get_relation(db_data, db_name)?;
 
     // Now create an entry in pg_class for the relation.
     add_new_relation_tuple(buffer, &pg_class, &new_rel)?;
@@ -70,12 +70,7 @@ fn add_new_attribute_tuples(
     let rel = rel.borrow();
 
     // Open pg_attribute relation to store the new relation attributes.
-    let pg_attribute = RelationData::open(
-        pg_attribute::RELATION_OID,
-        &rel.db_data,
-        &rel.db_name,
-        "pg_attribute",
-    )?;
+    let pg_attribute = PgAttribute::get_relation(&rel.db_data, &rel.db_name)?;
 
     // Initialize the pg_attribute page header if its new.
     // TODO: All catalog tables shoulb be bootstrapped at  inidbb process.

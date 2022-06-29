@@ -1,8 +1,14 @@
-use crate::Oid;
+use crate::{
+    storage::rel::{Relation, RelationData},
+    Oid,
+};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// Fixed oid of pg_attribute relation.
 pub const RELATION_OID: Oid = 1249;
+
+pub const RELATION_NAME: &'static str = "pg_attribute";
 
 /// The catalog pg_attribute stores information about table columns. There will be exactly one pg_attribute row for
 /// every column in every table in the database.
@@ -19,4 +25,16 @@ pub struct PgAttribute {
 
     /// The number of bytes in the internal representation of the type.
     pub attlen: usize,
+}
+
+impl PgAttribute {
+    /// Return the pg_attribute Relation.
+    pub fn get_relation(db_data: &str, db_name: &str) -> Result<Relation> {
+        Ok(RelationData::open(
+            RELATION_OID,
+            db_data,
+            db_name,
+            RELATION_NAME,
+        )?)
+    }
 }
