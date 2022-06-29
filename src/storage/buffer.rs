@@ -15,11 +15,11 @@ use super::rel::Relation;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// Represents no free slots on buffer pool.
-    #[error("")]
+    #[error("Buffer pool does not have any free slot to alocate a new page")]
     NoFreeSlots,
 
     /// Represents that an page_num does not exists on buffer pool.
-    #[error("")]
+    #[error("Page {0} does no exists")]
     PageNotFound(PageNumber),
 }
 

@@ -15,11 +15,7 @@ use crate::{
 use anyhow::Result;
 use sqlparser::ast::ColumnDef;
 
-use super::{
-    new_relation_oid,
-    pg_attribute::{self, PgAttribute},
-    pg_class::{self, PgClass},
-};
+use super::{new_relation_oid, pg_attribute::PgAttribute, pg_class::PgClass};
 
 /// Create a new cataloged heap relation.
 pub fn heap_create(

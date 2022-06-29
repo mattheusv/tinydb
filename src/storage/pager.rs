@@ -45,17 +45,13 @@ pub type PageNumber = u32;
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum Error {
     /// Represents an invalid page number on database file.
-    #[error("")]
+    #[error("Incorret page number")]
     IncorrectPageNumber,
 
     /// The database file is corrupted. Mostly the magic bytes
     /// is different than [MAGIC_BYTES].
-    #[error("")]
+    #[error("Corrupted database file")]
     CorruptedFile,
-
-    /// Could not convert a type to bytes representation.
-    #[error("")]
-    Serialize(String),
 }
 
 /// A in memory representation of a pager file header.
