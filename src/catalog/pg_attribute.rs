@@ -16,4 +16,7 @@ pub struct PgAttribute {
 
     /// The number of the column.
     pub attnum: usize,
+
+    /// The number of bytes in the internal representation of the type.
+    pub attlen: usize,
 }

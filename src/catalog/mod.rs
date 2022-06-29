@@ -8,7 +8,7 @@ use crate::{
     Oid,
 };
 
-use self::pg_class::PgClass;
+use self::{pg_attribute::PgAttribute, pg_class::PgClass};
 
 pub mod heap;
 pub mod pg_attribute;
@@ -45,6 +45,36 @@ impl Catalog {
         Self {
             db_data: db_data.to_string(),
         }
+    }
+
+    /// Return all attributes to the given relation name.
+    pub fn get_attributes_from_relation(
+        &self,
+        buffer_pool: &mut BufferPool,
+        db_name: &str,
+        rel_name: &str,
+    ) -> Result<Vec<PgAttribute>> {
+        let pg_attribute = RelationData::open(
+            pg_attribute::RELATION_OID,
+            &self.db_data,
+            db_name,
+            "pg_attribute",
+        )?;
+
+        let rel_oid = self.get_oid_relation(buffer_pool, db_name, rel_name)?;
+
+        let mut attributes = Vec::new();
+
+        heap_iter(buffer_pool, &pg_attribute, |tuple| -> Result<()> {
+            let attr = bincode::deserialize::<PgAttribute>(tuple)?;
+            if attr.attrelid == rel_oid {
+                attributes.push(attr);
+            }
+
+            Ok(())
+        })?;
+
+        Ok(attributes)
     }
 
     /// Return the oid of the given relation name.

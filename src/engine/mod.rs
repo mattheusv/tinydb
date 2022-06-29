@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::access::heap::{heap_insert, heap_scan, HeapTuple};
+use crate::access::heap::{heap_insert, heap_scan, HeapTuple, TupleDesc};
 use crate::catalog::{heap, Catalog};
 use crate::storage::rel::RelationData;
 use crate::storage::BufferPool;
@@ -77,8 +77,16 @@ impl Engine {
                                 &rel_name,
                             )?;
 
+                            let rel_attrs = self.catalog.get_attributes_from_relation(
+                                &mut self.buffer_pool,
+                                db_name,
+                                &rel_name,
+                            )?;
+
+                            let tuple_desc = TupleDesc { attrs: rel_attrs };
+
                             let rel = RelationData::open(oid, &self.db_data, db_name, &rel_name)?;
-                            heap_scan(&mut self.buffer_pool, &rel)?;
+                            heap_scan(&mut self.buffer_pool, &rel, &tuple_desc)?;
                         }
                         _ => todo!(),
                     }
@@ -93,7 +101,7 @@ impl Engine {
         &mut self,
         db_name: &str,
         table_name: ObjectName,
-        _: Vec<ast::Ident>,
+        columns: Vec<ast::Ident>,
         source: Box<ast::Query>,
     ) -> Result<()> {
         let rel_name = table_name.0[0].to_string();
@@ -105,19 +113,20 @@ impl Engine {
 
         match source.body {
             ast::SetExpr::Values(values) => {
-                for row in values.0 {
-                    for value in row {
+                let mut heap_data = Vec::new();
+                for (idx, _) in columns.iter().enumerate() {
+                    for row in &values.0 {
+                        assert_eq!(
+                            columns.len(),
+                            row.len(),
+                            "Incompatible columns and values to insert"
+                        );
+                        let value = &row[idx];
                         match value {
                             ast::Expr::Value(value) => match value {
                                 ast::Value::Number(value, _) => {
                                     let value = value.parse::<i32>().unwrap();
-                                    let value = bincode::serialize(&value).unwrap();
-
-                                    heap_insert(
-                                        &mut self.buffer_pool,
-                                        &rel,
-                                        &HeapTuple { data: value },
-                                    )?;
+                                    heap_data.append(&mut bincode::serialize(&value).unwrap());
                                 }
                                 _ => todo!(),
                             },
@@ -125,6 +134,8 @@ impl Engine {
                         }
                     }
                 }
+
+                heap_insert(&mut self.buffer_pool, &rel, &HeapTuple { data: heap_data })?;
             }
             _ => todo!(),
         }

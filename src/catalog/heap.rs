@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 use crate::{
     access::{
         heap::{heap_insert, HeapTuple},
@@ -39,6 +41,7 @@ pub fn heap_create(
             attrelid: new_oid,
             attname: attr.name.to_string(),
             attnum: i,
+            attlen: size_of::<i32>(),
         })
     }
 
@@ -81,13 +84,15 @@ fn add_new_attribute_tuples(
     }
 
     // Now insert a new tuple on pg_attribute containing the new attributes information.
-    heap_insert(
-        buffer,
-        &pg_attribute,
-        &HeapTuple {
-            data: bincode::serialize(&tupledesc.attrs)?,
-        },
-    )?;
+    for attr in &tupledesc.attrs {
+        heap_insert(
+            buffer,
+            &pg_attribute,
+            &HeapTuple {
+                data: bincode::serialize(&attr)?,
+            },
+        )?;
+    }
 
     Ok(())
 }
