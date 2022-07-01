@@ -1,5 +1,5 @@
 use crate::{
-    catalog::{pg_attribute::PgAttribute, pg_class::PgClass},
+    catalog::pg_attribute::PgAttribute,
     storage::{
         bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
         freespace,
@@ -32,45 +32,15 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
     Ok(())
 }
 
-pub fn heap_scan(
-    buffer_pool: &mut BufferPool,
-    rel: &Relation,
-    tuple_desc: &TupleDesc,
-) -> Result<()> {
-    heap_iter(buffer_pool, rel, |mut tuple| -> Result<()> {
-        match rel.borrow().rel_name.as_str() {
-            "pg_class" => {
-                let value = bincode::deserialize::<PgClass>(&tuple)?;
-                println!("-> value: {:?}", value);
-            }
-            "pg_attribute" => {
-                let value = bincode::deserialize::<PgAttribute>(&tuple)?;
-                println!("-> value: {:?}", value);
-            }
-            _ => {
-                for (i, attr) in tuple_desc.attrs.iter().enumerate() {
-                    assert_eq!(
-                        attr.attnum, i,
-                        "Expected equal tuple desc attr num to be equal loop index"
-                    );
-
-                    if tuple.len() < attr.attlen {
-                        // Means that the value does not exist on tuple.
-                        println!("{} : NULL", attr.attname);
-                    } else {
-                        // Value exists on tuple, so deserialize it.
-                        let attr_value = &tuple[..attr.attlen];
-                        let value = bincode::deserialize::<i32>(&attr_value)?;
-                        println!("{} : {}", attr.attname, value);
-
-                        tuple = &tuple[attr.attlen..];
-                    }
-                }
-            }
-        }
-
+pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<Vec<HeapTuple>> {
+    let mut tuples = Vec::new();
+    heap_iter(buffer_pool, rel, |tuple| -> Result<()> {
+        tuples.push(HeapTuple {
+            data: tuple.to_vec(),
+        });
         Ok(())
-    })
+    })?;
+    Ok(tuples)
 }
 
 /// Iterate over all heap pages and heap tuples to the given relation calling function f to each

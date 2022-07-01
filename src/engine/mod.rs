@@ -2,8 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use crate::access::heap::{heap_insert, heap_scan, HeapTuple, TupleDesc};
+use crate::catalog::pg_attribute::PgAttribute;
+use crate::catalog::pg_class::PgClass;
 use crate::catalog::{heap, Catalog};
-use crate::storage::rel::RelationData;
+use crate::storage::rel::{Relation, RelationData};
 use crate::storage::BufferPool;
 use anyhow::Result;
 use sqlparser::ast::{self, ColumnDef, ObjectName, Statement};
@@ -86,13 +88,59 @@ impl Engine {
                             let tuple_desc = TupleDesc { attrs: rel_attrs };
 
                             let rel = RelationData::open(oid, &self.db_data, db_name, &rel_name)?;
-                            heap_scan(&mut self.buffer_pool, &rel, &tuple_desc)?;
+                            let tuples = heap_scan(&mut self.buffer_pool, &rel)?;
+                            self.print_relation_tuples(&rel, tuples, &tuple_desc)?;
                         }
                         _ => todo!(),
                     }
                 }
             }
             _ => todo!(),
+        }
+        Ok(())
+    }
+
+    fn print_relation_tuples(
+        &self,
+        rel: &Relation,
+        tuples: Vec<HeapTuple>,
+        tuple_desc: &TupleDesc,
+    ) -> Result<()> {
+        match rel.borrow().rel_name.as_str() {
+            "pg_class" => {
+                for tuple in tuples {
+                    let value = bincode::deserialize::<PgClass>(&tuple.data)?;
+                    println!("-> value: {:?}", value);
+                }
+            }
+            "pg_attribute" => {
+                for tuple in tuples {
+                    let value = bincode::deserialize::<PgAttribute>(&tuple.data)?;
+                    println!("-> value: {:?}", value);
+                }
+            }
+            _ => {
+                for mut tuple in tuples {
+                    for (i, attr) in tuple_desc.attrs.iter().enumerate() {
+                        assert_eq!(
+                            attr.attnum, i,
+                            "Expected equal tuple desc attr num to be equal loop index"
+                        );
+
+                        if tuple.data.len() < attr.attlen {
+                            // Means that the value does not exist on tuple.
+                            println!("{} : NULL", attr.attname);
+                        } else {
+                            // Value exists on tuple, so deserialize it.
+                            let attr_value = &tuple.data[..attr.attlen];
+                            let value = bincode::deserialize::<i32>(&attr_value)?;
+                            println!("{} : {}", attr.attname, value);
+
+                            tuple.data = tuple.data[attr.attlen..].to_vec();
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }

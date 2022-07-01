@@ -1,12 +1,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use crate::{
-    access::heap::heap_iter,
-    new_object_id,
-    storage::{rel::RelationData, BufferPool},
-    Oid,
-};
+use crate::{access::heap::heap_iter, new_object_id, storage::BufferPool, Oid};
 
 use self::{pg_attribute::PgAttribute, pg_class::PgClass};
 
