@@ -11,6 +11,8 @@ use anyhow::Result;
 use sqlparser::ast::{self, ColumnDef, ObjectName, Statement};
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
+use tabled::builder::Builder;
+use tabled::Style;
 
 const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
@@ -106,21 +108,41 @@ impl Engine {
         tuples: Vec<HeapTuple>,
         tuple_desc: &TupleDesc,
     ) -> Result<()> {
+        let mut columns = Vec::new();
+        let mut records = Vec::new();
+
         match rel.borrow().rel_name.as_str() {
             "pg_class" => {
+                columns.append(&mut vec![String::from("oid"), String::from("relname")]);
                 for tuple in tuples {
                     let value = bincode::deserialize::<PgClass>(&tuple.data)?;
-                    println!("-> value: {:?}", value);
+                    records.push(vec![value.oid.to_string(), value.relname]);
                 }
             }
             "pg_attribute" => {
+                columns.append(&mut vec![
+                    String::from("attrelid"),
+                    String::from("attname"),
+                    String::from("attnum"),
+                    String::from("attlen"),
+                ]);
                 for tuple in tuples {
                     let value = bincode::deserialize::<PgAttribute>(&tuple.data)?;
-                    println!("-> value: {:?}", value);
+                    records.push(vec![
+                        value.attrelid.to_string(),
+                        value.attname,
+                        value.attnum.to_string(),
+                        value.attlen.to_string(),
+                    ]);
                 }
             }
             _ => {
+                for attr in &tuple_desc.attrs {
+                    columns.push(attr.attname.clone());
+                }
+
                 for mut tuple in tuples {
+                    let mut tuple_values = Vec::new();
                     for (i, attr) in tuple_desc.attrs.iter().enumerate() {
                         assert_eq!(
                             attr.attnum, i,
@@ -129,19 +151,31 @@ impl Engine {
 
                         if tuple.data.len() < attr.attlen {
                             // Means that the value does not exist on tuple.
-                            println!("{} : NULL", attr.attname);
+                            tuple_values.push(String::from("NULL"));
                         } else {
                             // Value exists on tuple, so deserialize it.
                             let attr_value = &tuple.data[..attr.attlen];
                             let value = bincode::deserialize::<i32>(&attr_value)?;
-                            println!("{} : {}", attr.attname, value);
+                            tuple_values.push(value.to_string());
 
                             tuple.data = tuple.data[attr.attlen..].to_vec();
                         }
                     }
+                    records.push(tuple_values);
                 }
             }
         }
+
+        let mut table = Builder::default().set_columns(columns);
+
+        for record in records {
+            table = table.add_record(record);
+        }
+
+        let table = table.build().with(Style::psql());
+
+        println!("{}", table);
+
         Ok(())
     }
 
