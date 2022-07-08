@@ -195,24 +195,45 @@ impl Engine {
 
         match source.body {
             ast::SetExpr::Values(values) => {
+                let rel_attrs = self.catalog.get_attributes_from_relation(
+                    &mut self.buffer_pool,
+                    db_name,
+                    &rel_name,
+                )?;
+
                 let mut heap_data = Vec::new();
-                for (idx, _) in columns.iter().enumerate() {
-                    for row in &values.0 {
-                        assert_eq!(
-                            columns.len(),
-                            row.len(),
-                            "Incompatible columns and values to insert"
-                        );
-                        let value = &row[idx];
-                        match value {
-                            ast::Expr::Value(value) => match value {
-                                ast::Value::Number(value, _) => {
-                                    let value = value.parse::<i32>().unwrap();
-                                    heap_data.append(&mut bincode::serialize(&value).unwrap());
+                // Iterate over all rows on insert to write new tuples.
+                for row in &values.0 {
+                    assert_eq!(
+                        row.len(),
+                        columns.len(),
+                        "INSERT has more expressions than target columns"
+                    );
+
+                    // Iterate over relation attrs and try to find the value that is being inserted
+                    // for each attr. If the value does not exists a NULL value should be inserted
+                    // on tuple header t_bits array.
+                    //
+                    // TODO: Add null bit on NULL attr values on tuple header t_bits.
+                    for attr in &rel_attrs {
+                        // TODO: Find a better way to lookup the attr value that is being inserted
+                        let index = columns.iter().position(|ident| ident.value == attr.attname);
+                        match index {
+                            Some(index) => {
+                                let value = &row[index];
+                                match value {
+                                    ast::Expr::Value(value) => match value {
+                                        ast::Value::Number(value, _) => {
+                                            let value = value.parse::<i32>().unwrap();
+                                            heap_data
+                                                .append(&mut bincode::serialize(&value).unwrap());
+                                        }
+                                        _ => todo!(),
+                                    },
+                                    _ => todo!(),
                                 }
-                                _ => todo!(),
-                            },
-                            _ => todo!(),
+                            }
+                            _ => {}
                         }
                     }
                 }
