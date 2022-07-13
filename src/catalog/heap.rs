@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use crate::{
     access::{
-        heap::{heap_insert, HeapTuple},
+        heap::{heap_insert, HeapTuple, HeapTupleHeader},
         tuple::TupleDesc,
     },
     storage::{
@@ -80,6 +80,7 @@ fn add_new_attribute_tuples(
             buffer,
             &pg_attribute,
             &HeapTuple {
+                header: HeapTupleHeader {},
                 data: bincode::serialize(&attr)?,
             },
         )?;
@@ -109,6 +110,7 @@ fn add_new_relation_tuple(
         buffer,
         pg_class,
         &HeapTuple {
+            header: HeapTupleHeader {},
             data: bincode::serialize(&PgClass {
                 oid: new_rel.oid,
                 relname: new_rel.rel_name.clone(),

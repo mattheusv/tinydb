@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 use crate::{
     catalog::pg_attribute::PgAttribute,
     storage::{
@@ -8,10 +10,39 @@ use crate::{
     },
 };
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+/// Represents the size of a heap header tuple.
+pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeader>();
+
+#[derive(Serialize, Deserialize)]
+pub struct HeapTupleHeader {}
 
 /// HeapTuple is an in-memory data structure that points to a tuple on some page.
 pub struct HeapTuple {
+    /// Heap tuple header fields.
+    pub header: HeapTupleHeader,
+
+    /// Actual heap tuple data (header NOT included).
     pub data: Vec<u8>,
+}
+
+impl HeapTuple {
+    /// Create a new heap tuple from raw tuple bytes.
+    pub fn from_raw_tuple(tuple: &[u8]) -> Result<Self> {
+        Ok(Self {
+            header: bincode::deserialize(&tuple[0..HEAP_TUPLE_HEADER_SIZE])?,
+            data: tuple[HEAP_TUPLE_HEADER_SIZE..].to_vec(),
+        })
+    }
+
+    /// Return the heap tuple representation in raw bytes.
+    pub fn to_raw_tuple(&self) -> Result<Vec<u8>> {
+        // TODO: Try to avoid allocation here.
+        let mut tuple = bincode::serialize(&self.header)?.to_vec();
+        tuple.append(&mut self.data.clone());
+        Ok(tuple)
+    }
 }
 
 /// Describe tuple attributes of single relation.
@@ -25,7 +56,7 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
     let page = buffer_pool.get_page(&buffer);
 
-    page_add_item(&page, &tuple.data)?;
+    page_add_item(&page, &tuple.to_raw_tuple()?)?;
 
     buffer_pool.unpin_buffer(buffer, true)?;
 
@@ -35,9 +66,7 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
 pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<Vec<HeapTuple>> {
     let mut tuples = Vec::new();
     heap_iter(buffer_pool, rel, |tuple| -> Result<()> {
-        tuples.push(HeapTuple {
-            data: tuple.to_vec(),
-        });
+        tuples.push(HeapTuple::from_raw_tuple(&tuple)?);
         Ok(())
     })?;
     Ok(tuples)

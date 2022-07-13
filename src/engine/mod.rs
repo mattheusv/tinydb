@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::access::heap::{heap_insert, heap_scan, HeapTuple, TupleDesc};
+use crate::access::heap::{heap_insert, heap_scan, HeapTuple, HeapTupleHeader, TupleDesc};
 use crate::catalog::pg_attribute::PgAttribute;
 use crate::catalog::pg_class::PgClass;
 use crate::catalog::{heap, Catalog};
@@ -238,7 +238,14 @@ impl Engine {
                     }
                 }
 
-                heap_insert(&mut self.buffer_pool, &rel, &HeapTuple { data: heap_data })?;
+                heap_insert(
+                    &mut self.buffer_pool,
+                    &rel,
+                    &HeapTuple {
+                        header: HeapTupleHeader {},
+                        data: heap_data,
+                    },
+                )?;
             }
             _ => todo!(),
         }
