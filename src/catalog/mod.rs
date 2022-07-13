@@ -56,7 +56,7 @@ impl Catalog {
         let mut attributes = Vec::new();
 
         heap_iter(buffer_pool, &pg_attribute, |tuple| -> Result<()> {
-            let attr = bincode::deserialize::<PgAttribute>(tuple)?;
+            let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
             if attr.attrelid == rel_oid {
                 attributes.push(attr);
             }
@@ -86,7 +86,7 @@ impl Catalog {
                 heap_iter(buffer_pool, &pg_class_rel, |tuple| -> Result<()> {
                     // Do nothing if the oid is already founded.
                     if oid.is_none() {
-                        let pg_class = bincode::deserialize::<PgClass>(&tuple)?;
+                        let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;
                         if pg_class.relname == rel_name {
                             oid = Some(pg_class.oid);
                         }

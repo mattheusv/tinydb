@@ -66,7 +66,7 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
 pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<Vec<HeapTuple>> {
     let mut tuples = Vec::new();
     heap_iter(buffer_pool, rel, |tuple| -> Result<()> {
-        tuples.push(HeapTuple::from_raw_tuple(&tuple)?);
+        tuples.push(tuple);
         Ok(())
     })?;
     Ok(tuples)
@@ -76,7 +76,7 @@ pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<Vec<Hea
 /// tuple in a page.
 pub fn heap_iter<F>(buffer_pool: &mut BufferPool, rel: &Relation, mut f: F) -> Result<()>
 where
-    F: FnMut(&[u8]) -> Result<()>,
+    F: FnMut(HeapTuple) -> Result<()>,
 {
     // TODO: Iterate over all pages on relation
     let buffer = buffer_pool.fetch_buffer(rel, 1)?;
@@ -97,7 +97,9 @@ where
 
         // Slice the raw page to get a refenrece to a tuple inside the page.
         let data = &page_data[item_id.offset as usize..(item_id.offset + item_id.length) as usize];
-        f(data)?;
+        let tuple = HeapTuple::from_raw_tuple(data)?;
+
+        f(tuple)?;
     }
 
     buffer_pool.unpin_buffer(buffer, false)?;
