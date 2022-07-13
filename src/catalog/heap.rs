@@ -36,7 +36,7 @@ pub fn heap_create(
         tupledesc.attrs.push(PgAttribute {
             attrelid: new_oid,
             attname: attr.name.to_string(),
-            attnum: i,
+            attnum: i + 1, // Attributes numbers start at 1
             attlen: size_of::<i32>(),
         })
     }

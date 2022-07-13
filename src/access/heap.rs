@@ -8,6 +8,7 @@ use crate::{
         rel::Relation,
         BufferPool,
     },
+    Dataum,
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,33 @@ impl HeapTuple {
         let mut tuple = bincode::serialize(&self.header)?.to_vec();
         tuple.append(&mut self.data.clone());
         Ok(tuple)
+    }
+
+    /// Extract an attribute of a heap tuple and return it as a Datum.
+    ///
+    /// This works for either system or user attributes. The given attnum
+    /// is properly range-checked.
+    ///  
+    ///  If the field in question has a NULL value, we return None. Otherwise return
+    ///  Some<Dataum> where Dataum represents the actual attribute value on heap.
+    pub fn get_attr(&self, attnum: usize, tuple_desc: &TupleDesc) -> Option<Dataum> {
+        if attnum > tuple_desc.attrs.len() {
+            // Attribute does not exists on tuple.
+            return None;
+        }
+
+        let attr = &tuple_desc.attrs[attnum - 1];
+
+        // Iterate over all tuple attributes to get the correclty offset of the required attribute.
+        let mut offset = 0;
+        for attr in &tuple_desc.attrs {
+            if attr.attnum == attnum {
+                break;
+            }
+            offset += attr.attlen;
+        }
+
+        Some(self.data[offset..offset + attr.attlen].to_vec())
     }
 
     /// Return true if heap tuple has null values.

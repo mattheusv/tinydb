@@ -141,24 +141,18 @@ impl Engine {
                     columns.push(attr.attname.clone());
                 }
 
-                for mut tuple in tuples {
+                for tuple in tuples {
                     let mut tuple_values = Vec::new();
-                    for (i, attr) in tuple_desc.attrs.iter().enumerate() {
-                        assert_eq!(
-                            attr.attnum, i,
-                            "Expected equal tuple desc attr num to be equal loop index"
-                        );
-
-                        if tuple.data.len() < attr.attlen {
-                            // Means that the value does not exist on tuple.
-                            tuple_values.push(String::from("NULL"));
-                        } else {
-                            // Value exists on tuple, so deserialize it.
-                            let attr_value = &tuple.data[..attr.attlen];
-                            let value = bincode::deserialize::<i32>(&attr_value)?;
-                            tuple_values.push(value.to_string());
-
-                            tuple.data = tuple.data[attr.attlen..].to_vec();
+                    for attr in tuple_desc.attrs.iter() {
+                        let dataum = tuple.get_attr(attr.attnum, tuple_desc);
+                        match dataum {
+                            Some(dataum) => {
+                                let value = bincode::deserialize::<i32>(&dataum)?;
+                                tuple_values.push(value.to_string());
+                            }
+                            None => {
+                                tuple_values.push(String::from("NULL"));
+                            }
                         }
                     }
                     records.push(tuple_values);
