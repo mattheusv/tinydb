@@ -235,7 +235,9 @@ impl Engine {
                                     _ => todo!(),
                                 }
                             }
-                            _ => {}
+                            None => {
+                                heap_tuple.add_has_nulls_flag();
+                            }
                         }
                     }
                 }

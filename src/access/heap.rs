@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 /// Represents the size of a heap header tuple.
 pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeader>();
 
+/// Bit flag stored on t_infomask informing if a tuple has null values.
+const HEAP_HASNULL: u16 = 0x0001;
+
 #[derive(Serialize, Deserialize, Default)]
 pub struct HeapTupleHeader {
     /// Varios bit flags.
@@ -46,6 +49,16 @@ impl HeapTuple {
         let mut tuple = bincode::serialize(&self.header)?.to_vec();
         tuple.append(&mut self.data.clone());
         Ok(tuple)
+    }
+
+    /// Return true if heap tuple has null values.
+    pub fn has_nulls(&self) -> bool {
+        self.header.t_infomask & HEAP_HASNULL != 0
+    }
+
+    /// Add HEAP_HASNULL bit flag on heap header.
+    pub fn add_has_nulls_flag(&mut self) {
+        self.header.t_infomask |= HEAP_HASNULL;
     }
 }
 
