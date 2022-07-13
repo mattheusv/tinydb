@@ -15,10 +15,14 @@ use serde::{Deserialize, Serialize};
 /// Represents the size of a heap header tuple.
 pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeader>();
 
-#[derive(Serialize, Deserialize)]
-pub struct HeapTupleHeader {}
+#[derive(Serialize, Deserialize, Default)]
+pub struct HeapTupleHeader {
+    /// Varios bit flags.
+    pub t_infomask: u16,
+}
 
 /// HeapTuple is an in-memory data structure that points to a tuple on some page.
+#[derive(Default)]
 pub struct HeapTuple {
     /// Heap tuple header fields.
     pub header: HeapTupleHeader,

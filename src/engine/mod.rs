@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::access::heap::{heap_insert, heap_scan, HeapTuple, HeapTupleHeader, TupleDesc};
+use crate::access::heap::{heap_insert, heap_scan, HeapTuple, TupleDesc};
 use crate::catalog::pg_attribute::PgAttribute;
 use crate::catalog::pg_class::PgClass;
 use crate::catalog::{heap, Catalog};
@@ -201,7 +201,8 @@ impl Engine {
                     &rel_name,
                 )?;
 
-                let mut heap_data = Vec::new();
+                let mut heap_tuple = HeapTuple::default();
+
                 // Iterate over all rows on insert to write new tuples.
                 for row in &values.0 {
                     assert_eq!(
@@ -225,7 +226,8 @@ impl Engine {
                                     ast::Expr::Value(value) => match value {
                                         ast::Value::Number(value, _) => {
                                             let value = value.parse::<i32>().unwrap();
-                                            heap_data
+                                            heap_tuple
+                                                .data
                                                 .append(&mut bincode::serialize(&value).unwrap());
                                         }
                                         _ => todo!(),
@@ -238,14 +240,7 @@ impl Engine {
                     }
                 }
 
-                heap_insert(
-                    &mut self.buffer_pool,
-                    &rel,
-                    &HeapTuple {
-                        header: HeapTupleHeader {},
-                        data: heap_data,
-                    },
-                )?;
+                heap_insert(&mut self.buffer_pool, &rel, &heap_tuple)?;
             }
             _ => todo!(),
         }
