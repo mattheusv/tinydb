@@ -220,9 +220,9 @@ impl Engine {
                                     ast::Expr::Value(value) => match value {
                                         ast::Value::Number(value, _) => {
                                             let value = value.parse::<i32>().unwrap();
-                                            heap_tuple
-                                                .data
-                                                .append(&mut bincode::serialize(&value).unwrap());
+                                            heap_tuple.append_data(
+                                                &mut bincode::serialize(&value).unwrap(),
+                                            );
                                         }
                                         _ => todo!(),
                                     },

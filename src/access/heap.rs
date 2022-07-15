@@ -23,6 +23,9 @@ const HEAP_HASNULL: u16 = 0x0001;
 pub struct HeapTupleHeader {
     /// Varios bit flags.
     pub t_infomask: u16,
+
+    /// Number of attributes.
+    pub t_nattrs: u16,
 }
 
 /// HeapTuple is an in-memory data structure that points to a tuple on some page.
@@ -50,6 +53,12 @@ impl HeapTuple {
         let mut tuple = bincode::serialize(&self.header)?.to_vec();
         tuple.append(&mut self.data.clone());
         Ok(tuple)
+    }
+
+    /// Add a new attribute value on tuple.
+    pub fn append_data(&mut self, data: &mut Vec<u8>) {
+        self.data.append(data);
+        self.header.t_nattrs += 1;
     }
 
     /// Extract an attribute of a heap tuple and return it as a Datum.
