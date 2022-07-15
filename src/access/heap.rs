@@ -14,18 +14,27 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// Represents the size of a heap header tuple.
-pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeader>();
+pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeaderFields>();
 
 /// Bit flag stored on t_infomask informing if a tuple has null values.
 const HEAP_HASNULL: u16 = 0x0001;
 
+/// Hold all fields that is writen on heap tuple header section on disk.
 #[derive(Serialize, Deserialize, Default)]
-pub struct HeapTupleHeader {
+pub struct HeapTupleHeaderFields {
     /// Varios bit flags.
     pub t_infomask: u16,
 
     /// Number of attributes.
     pub t_nattrs: u16,
+}
+
+/// Hold the fixed header fields and optinal fields that are written on heap tuple data
+/// section on disk.
+#[derive(Default)]
+pub struct HeapTupleHeader {
+    /// Fixed heap tuple fields.
+    pub fields: HeapTupleHeaderFields,
 }
 
 /// HeapTuple is an in-memory data structure that points to a tuple on some page.
@@ -41,8 +50,11 @@ pub struct HeapTuple {
 impl HeapTuple {
     /// Create a new heap tuple from raw tuple bytes.
     pub fn from_raw_tuple(tuple: &[u8]) -> Result<Self> {
+        let header = HeapTupleHeader {
+            fields: bincode::deserialize(&tuple[0..HEAP_TUPLE_HEADER_SIZE])?,
+        };
         Ok(Self {
-            header: bincode::deserialize(&tuple[0..HEAP_TUPLE_HEADER_SIZE])?,
+            header,
             data: tuple[HEAP_TUPLE_HEADER_SIZE..].to_vec(),
         })
     }
@@ -50,7 +62,7 @@ impl HeapTuple {
     /// Return the heap tuple representation in raw bytes.
     pub fn to_raw_tuple(&self) -> Result<Vec<u8>> {
         // TODO: Try to avoid allocation here.
-        let mut tuple = bincode::serialize(&self.header)?.to_vec();
+        let mut tuple = bincode::serialize(&self.header.fields)?.to_vec();
         tuple.append(&mut self.data.clone());
         Ok(tuple)
     }
@@ -58,7 +70,7 @@ impl HeapTuple {
     /// Add a new attribute value on tuple.
     pub fn append_data(&mut self, data: &mut Vec<u8>) {
         self.data.append(data);
-        self.header.t_nattrs += 1;
+        self.header.fields.t_nattrs += 1;
     }
 
     /// Extract an attribute of a heap tuple and return it as a Datum.
@@ -90,12 +102,12 @@ impl HeapTuple {
 
     /// Return true if heap tuple has null values.
     pub fn has_nulls(&self) -> bool {
-        self.header.t_infomask & HEAP_HASNULL != 0
+        self.header.fields.t_infomask & HEAP_HASNULL != 0
     }
 
     /// Add HEAP_HASNULL bit flag on heap header.
     pub fn add_has_nulls_flag(&mut self) {
-        self.header.t_infomask |= HEAP_HASNULL;
+        self.header.fields.t_infomask |= HEAP_HASNULL;
     }
 }
 
