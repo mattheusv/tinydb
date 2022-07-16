@@ -20,13 +20,26 @@ pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeaderFields>();
 const HEAP_HASNULL: u16 = 0x0001;
 
 /// Hold all fields that is writen on heap tuple header section on disk.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize)]
 pub struct HeapTupleHeaderFields {
     /// Varios bit flags.
     pub t_infomask: u16,
 
     /// Number of attributes.
     pub t_nattrs: u16,
+
+    /// Offset to user data.
+    pub t_hoff: u16,
+}
+
+impl Default for HeapTupleHeaderFields {
+    fn default() -> Self {
+        Self {
+            t_infomask: u16::default(),
+            t_nattrs: u16::default(),
+            t_hoff: HEAP_TUPLE_HEADER_SIZE as u16,
+        }
+    }
 }
 
 /// Hold the fixed header fields and optinal fields that are written on heap tuple data
@@ -53,9 +66,10 @@ impl HeapTuple {
         let header = HeapTupleHeader {
             fields: bincode::deserialize(&tuple[0..HEAP_TUPLE_HEADER_SIZE])?,
         };
+        let t_hoff = header.fields.t_hoff as usize;
         Ok(Self {
             header,
-            data: tuple[HEAP_TUPLE_HEADER_SIZE..].to_vec(),
+            data: tuple[t_hoff..].to_vec(),
         })
     }
 
