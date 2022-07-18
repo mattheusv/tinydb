@@ -48,6 +48,12 @@ impl Default for HeapTupleHeaderFields {
 pub struct HeapTupleHeader {
     /// Fixed heap tuple fields.
     pub fields: HeapTupleHeaderFields,
+
+    /// Bitmap of NULLs.
+    ///
+    /// The bitmap is *not* stored if t_infomask shows that there
+    /// are no nulls in the tuple.
+    pub t_bits: Vec<bool>,
 }
 
 /// HeapTuple is an in-memory data structure that points to a tuple on some page.
@@ -60,13 +66,26 @@ pub struct HeapTuple {
     pub data: Vec<u8>,
 }
 
+impl HeapTupleHeader {
+    /// Return true if heap tuple has null values.
+    pub fn has_nulls(&self) -> bool {
+        self.fields.t_infomask & HEAP_HASNULL != 0
+    }
+}
+
 impl HeapTuple {
     /// Create a new heap tuple from raw tuple bytes.
     pub fn from_raw_tuple(tuple: &[u8]) -> Result<Self> {
-        let header = HeapTupleHeader {
+        let mut header = HeapTupleHeader {
             fields: bincode::deserialize(&tuple[0..HEAP_TUPLE_HEADER_SIZE])?,
+            t_bits: Vec::new(),
         };
         let t_hoff = header.fields.t_hoff as usize;
+
+        if header.has_nulls() {
+            header.t_bits = bincode::deserialize(&tuple[HEAP_TUPLE_HEADER_SIZE..t_hoff])?;
+        }
+
         Ok(Self {
             header,
             data: tuple[t_hoff..].to_vec(),
@@ -74,9 +93,25 @@ impl HeapTuple {
     }
 
     /// Return the heap tuple representation in raw bytes.
-    pub fn to_raw_tuple(&self) -> Result<Vec<u8>> {
+    ///
+    // TODO: Try to compute t_hoff outside of this function to avoid require a
+    // mutable reference to self.
+    pub fn to_raw_tuple(&mut self) -> Result<Vec<u8>> {
+        let mut t_bits = None;
+
+        if self.has_nulls() {
+            let t_bits_data = bincode::serialize(&self.header.t_bits)?;
+            self.header.fields.t_hoff += t_bits_data.len() as u16;
+            t_bits = Some(t_bits_data);
+        }
+
         // TODO: Try to avoid allocation here.
         let mut tuple = bincode::serialize(&self.header.fields)?.to_vec();
+
+        if self.has_nulls() {
+            tuple.append(&mut t_bits.unwrap().to_vec());
+        }
+
         tuple.append(&mut self.data.clone());
         Ok(tuple)
     }
@@ -84,6 +119,7 @@ impl HeapTuple {
     /// Add a new attribute value on tuple.
     pub fn append_data(&mut self, data: &mut Vec<u8>) {
         self.data.append(data);
+        self.header.t_bits.push(false);
         self.header.fields.t_nattrs += 1;
     }
 
@@ -95,7 +131,7 @@ impl HeapTuple {
     ///  If the field in question has a NULL value, we return None. Otherwise return
     ///  Some<Dataum> where Dataum represents the actual attribute value on heap.
     pub fn get_attr(&self, attnum: usize, tuple_desc: &TupleDesc) -> Option<Dataum> {
-        if attnum > tuple_desc.attrs.len() {
+        if attnum > tuple_desc.attrs.len() || self.attr_is_null(attnum) {
             // Attribute does not exists on tuple.
             return None;
         }
@@ -108,6 +144,11 @@ impl HeapTuple {
             if attr.attnum == attnum {
                 break;
             }
+            if self.attr_is_null(attr.attnum) {
+                // Skip NULL values.
+                continue;
+            }
+
             offset += attr.attlen;
         }
 
@@ -121,7 +162,13 @@ impl HeapTuple {
 
     /// Add HEAP_HASNULL bit flag on heap header.
     pub fn add_has_nulls_flag(&mut self) {
+        self.header.t_bits.push(true);
         self.header.fields.t_infomask |= HEAP_HASNULL;
+    }
+
+    /// Return true if the given attnum on tuple has a NULL value.
+    fn attr_is_null(&self, attnum: usize) -> bool {
+        self.has_nulls() && attnum <= self.header.t_bits.len() && self.header.t_bits[attnum - 1]
     }
 }
 
@@ -132,7 +179,11 @@ pub struct TupleDesc {
 }
 
 /// Insert a new tuple into a heap page of the given relation.
-pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
+pub fn heap_insert(
+    buffer_pool: &mut BufferPool,
+    rel: &Relation,
+    tuple: &mut HeapTuple,
+) -> Result<()> {
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
     let page = buffer_pool.get_page(&buffer);
 

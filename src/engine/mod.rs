@@ -236,7 +236,7 @@ impl Engine {
                     }
                 }
 
-                heap_insert(&mut self.buffer_pool, &rel, &heap_tuple)?;
+                heap_insert(&mut self.buffer_pool, &rel, &mut heap_tuple)?;
             }
             _ => todo!(),
         }

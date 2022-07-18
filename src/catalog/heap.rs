@@ -79,7 +79,7 @@ fn add_new_attribute_tuples(
         heap_insert(
             buffer,
             &pg_attribute,
-            &HeapTuple {
+            &mut HeapTuple {
                 header: HeapTupleHeader::default(),
                 data: bincode::serialize(&attr)?,
             },
@@ -109,7 +109,7 @@ fn add_new_relation_tuple(
     heap_insert(
         buffer,
         pg_class,
-        &HeapTuple {
+        &mut HeapTuple {
             header: HeapTupleHeader::default(),
             data: bincode::serialize(&PgClass {
                 oid: new_rel.oid,
