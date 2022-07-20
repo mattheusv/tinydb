@@ -1,3 +1,4 @@
+use std::io;
 use std::path::PathBuf;
 
 use rustyline::error::ReadlineError;
@@ -19,6 +20,7 @@ fn main() {
         println!("No previous history.");
     }
 
+    let mut stdout = io::stdout();
     let buffer = BufferPool::new(120);
     let mut engine = Engine::new(buffer, "data");
 
@@ -28,7 +30,7 @@ fn main() {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
-                if let Err(err) = engine.exec(&line, default_db_name) {
+                if let Err(err) = engine.exec(&mut stdout, &line, default_db_name) {
                     eprintln!("Error: {:?}", err);
                     continue;
                 }

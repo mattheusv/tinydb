@@ -1,5 +1,5 @@
-use std::fs;
 use std::path::Path;
+use std::{fs, io};
 
 use crate::access::heap::{heap_insert, heap_scan, HeapTuple, TupleDesc};
 use crate::catalog::pg_attribute::PgAttribute;
@@ -39,17 +39,22 @@ impl Engine {
         }
     }
 
-    pub fn exec(&mut self, command: &str, db_name: &str) -> Result<()> {
+    pub fn exec(&mut self, output: &mut dyn io::Write, command: &str, db_name: &str) -> Result<()> {
         let ast = Parser::parse_sql(&DIALECT, command)?;
 
         for stmt in ast {
-            self.exec_stmt(db_name, stmt)?;
+            self.exec_stmt(output, db_name, stmt)?;
         }
 
         Ok(())
     }
 
-    fn exec_stmt(&mut self, db_name: &str, stmt: Statement) -> Result<()> {
+    fn exec_stmt(
+        &mut self,
+        output: &mut dyn io::Write,
+        db_name: &str,
+        stmt: Statement,
+    ) -> Result<()> {
         match stmt {
             Statement::CreateDatabase { db_name, .. } => self.create_database(db_name),
             Statement::CreateTable { name, columns, .. } => {
@@ -61,14 +66,19 @@ impl Engine {
                 source,
                 ..
             } => self.insert_into(db_name, table_name, columns, source),
-            Statement::Query(query) => self.query(db_name, query),
+            Statement::Query(query) => self.query(output, db_name, query),
             _ => {
                 todo!()
             }
         }
     }
 
-    fn query(&mut self, db_name: &str, query: Box<ast::Query>) -> Result<()> {
+    fn query(
+        &mut self,
+        output: &mut dyn io::Write,
+        db_name: &str,
+        query: Box<ast::Query>,
+    ) -> Result<()> {
         match query.body {
             ast::SetExpr::Select(select) => {
                 for table in select.from {
@@ -91,7 +101,7 @@ impl Engine {
 
                             let rel = RelationData::open(oid, &self.db_data, db_name, &rel_name)?;
                             let tuples = heap_scan(&mut self.buffer_pool, &rel)?;
-                            self.print_relation_tuples(&rel, tuples, &tuple_desc)?;
+                            self.print_relation_tuples(output, &rel, tuples, &tuple_desc)?;
                         }
                         _ => todo!(),
                     }
@@ -104,6 +114,7 @@ impl Engine {
 
     fn print_relation_tuples(
         &self,
+        output: &mut dyn io::Write,
         rel: &Relation,
         tuples: Vec<HeapTuple>,
         tuple_desc: &TupleDesc,
@@ -168,7 +179,7 @@ impl Engine {
 
         let table = table.build().with(Style::psql());
 
-        println!("{}", table);
+        writeln!(output, "{}", table)?;
 
         Ok(())
     }
@@ -263,32 +274,6 @@ impl Engine {
     fn create_database(&self, name: ObjectName) -> Result<()> {
         let table_path = Path::new(&self.db_data).join(name.0[0].to_string());
         fs::create_dir(table_path)?;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::initdb::init_database;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_engine() -> Result<()> {
-        {
-            let db_data = tempdir()?;
-            let db_name = "test_engine";
-
-            init_database(&db_data.path().to_path_buf(), db_name)?;
-
-            let buffer = BufferPool::new(120);
-            let mut engine = Engine::new(buffer, &db_data.path().to_string_lossy().to_string());
-
-            engine.exec("CREATE TABLE t(a int);", db_name)?;
-            engine.exec("INSERT INTO t(a) VALUES(87);", db_name)?;
-            engine.exec("SELECT * FROM t;", db_name)?;
-        }
-
         Ok(())
     }
 }
