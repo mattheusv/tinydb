@@ -1,5 +1,6 @@
 #![feature(slice_as_chunks)]
 
+pub mod commands;
 pub mod initdb;
 
 use std::sync::atomic::{AtomicU64, Ordering};
