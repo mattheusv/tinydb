@@ -1,5 +1,9 @@
 use anyhow::Result;
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::RefCell,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use crate::Oid;
 
@@ -18,6 +22,15 @@ pub struct RelationLocatorData {
 }
 
 pub type RelationLocator = Rc<RelationLocatorData>;
+
+impl RelationLocatorData {
+    /// Return the physical path of a relation.
+    pub fn relation_path(&self) -> Result<PathBuf> {
+        Ok(Path::new(&self.db_data)
+            .join(&self.db_name)
+            .join(&self.oid.to_string()))
+    }
+}
 
 /// Relation provide all information that we need to know to physically access a database relation.
 pub struct RelationData {
@@ -49,13 +62,13 @@ impl RelationData {
     }
 
     /// Returns smgr file handle for a relation, opening it if needed.
-    pub fn smgr(&mut self) -> SMgrRelation {
+    pub fn smgr(&mut self) -> Result<SMgrRelation> {
         match &self.smgr {
             Some(smgr) => {
-                return smgr.clone();
+                return Ok(smgr.clone());
             }
             None => {
-                let smgr = SMgrRelationData::open(&self.locator);
+                let smgr = SMgrRelationData::open(&self.locator)?;
                 self.smgr = Some(Rc::new(RefCell::new(smgr)));
                 return self.smgr();
             }
