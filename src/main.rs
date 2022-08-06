@@ -7,8 +7,30 @@ use tinydb::engine::Engine;
 use tinydb::initdb::init_database;
 use tinydb::storage::BufferPool;
 
+use structopt::StructOpt;
+
+/// Command line arguments
+#[derive(StructOpt)]
+#[structopt()]
+struct Flags {
+    /// Silence all output
+    #[structopt(short = "q", long = "quiet")]
+    quiet: bool,
+
+    /// Verbose mode (-v, -vv, -vvv, etc)
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    verbose: usize,
+}
+
 fn main() {
-    pretty_env_logger::init();
+    let flags = Flags::from_args();
+
+    stderrlog::new()
+        .module(module_path!())
+        .quiet(flags.quiet)
+        .verbosity(flags.verbose)
+        .init()
+        .unwrap();
 
     let default_db_name = "tinydb";
 
