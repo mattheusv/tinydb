@@ -70,7 +70,7 @@ fn add_new_attribute_tuples(
 
     // Initialize the pg_attribute page header if its new.
     // TODO: All catalog tables shoulb be bootstrapped at  inidbb process.
-    if pg_attribute.borrow().pager.size()? == 0 {
+    if pg_attribute.borrow_mut().smgr().borrow().size()? == 0 {
         initialize_default_page_header(buffer, &pg_attribute)?;
     }
 
@@ -99,7 +99,7 @@ fn add_new_relation_tuple(
 ) -> Result<()> {
     // Initialize the pg_class page header if its new.
     // TODO: All catalog tables shoulb be bootstrapped at  inidbb process.
-    if pg_class.borrow().pager.size()? == 0 {
+    if pg_class.borrow_mut().smgr().borrow().size()? == 0 {
         initialize_default_page_header(buffer, pg_class)?;
     }
 

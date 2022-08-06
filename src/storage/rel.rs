@@ -1,9 +1,9 @@
 use anyhow::Result;
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::Oid;
 
-use super::pager::Pager;
+use super::smgr::{SMgrRelation, SMgrRelationData};
 
 pub struct RelationLocatorData {
     /// Path where database files are stored.
@@ -26,8 +26,8 @@ pub struct RelationData {
     /// Name of this relation.
     pub rel_name: String,
 
-    /// File pager handle.
-    pub pager: Pager,
+    /// Cache file handle or None if was not required yet.
+    smgr: Option<SMgrRelation>,
 }
 
 /// A mutable reference counter to an RelationData.
@@ -36,15 +36,28 @@ pub type Relation = Rc<RefCell<RelationData>>;
 impl RelationData {
     /// Open any relation to the given db data path and db name and relation name.
     pub fn open(oid: Oid, db_data: &str, db_name: &str, rel_name: &str) -> Result<Relation> {
-        let pager = Pager::open(&Path::new(db_data).join(db_name).join(oid.to_string()))?;
         Ok(Rc::new(RefCell::new(RelationData {
-            pager,
             locator: Rc::new(RelationLocatorData {
                 db_data: db_data.to_string(),
                 db_name: db_name.to_string(),
                 oid,
             }),
             rel_name: rel_name.to_string(),
+            smgr: None,
         })))
+    }
+
+    /// Returns smgr file handle for a relation, opening it if needed.
+    pub fn smgr(&mut self) -> SMgrRelation {
+        match &self.smgr {
+            Some(smgr) => {
+                return smgr.clone();
+            }
+            None => {
+                let smgr = SMgrRelationData::open(&self.locator);
+                self.smgr = Some(Rc::new(RefCell::new(smgr)));
+                return self.smgr();
+            }
+        }
     }
 }

@@ -219,9 +219,8 @@ impl BufferPool {
 
             // Create a new empty page and read the page data from disk.
             let mut page = Bytes::new();
-            rel.borrow_mut()
-                .pager
-                .read_page(page_num, &mut page.bytes_mut())?;
+            let smgr = rel.borrow_mut().smgr();
+            smgr.borrow_mut().read(page_num, &mut page.bytes_mut())?;
 
             // Add page on cache and pin the new buffer.
             self.page_table.push(Rc::new(RefCell::new(page)));
@@ -245,7 +244,8 @@ impl BufferPool {
     ///
     /// Return error if no new pages could be created, otherwise the buffer.
     pub fn alloc_buffer(&mut self, rel: &Relation) -> Result<Buffer> {
-        let page_num = rel.borrow_mut().pager.allocate_page()?;
+        let smgr = rel.borrow_mut().smgr();
+        let page_num = smgr.borrow_mut().extend()?;
         self.fetch_buffer(rel, page_num)
     }
 
@@ -278,12 +278,9 @@ impl BufferPool {
         let page = self.get_page(&buffer);
 
         let buffer = buffer.borrow();
-        buffer
-            .tag
-            .rel
-            .borrow_mut()
-            .pager
-            .write_page(buffer.tag.page_num, &page.borrow().bytes())?;
+        let smgr = buffer.tag.rel.borrow_mut().smgr();
+        smgr.borrow_mut()
+            .write(buffer.tag.page_num, &page.borrow().bytes())?;
 
         Ok(())
     }
@@ -295,11 +292,9 @@ impl BufferPool {
             let page = self.get_page(&buf);
 
             let buf = buf.borrow();
-            buf.tag
-                .rel
-                .borrow_mut()
-                .pager
-                .write_page(buf.tag.page_num, &page.borrow().bytes())?;
+            let smgr = buf.tag.rel.borrow_mut().smgr();
+            smgr.borrow_mut()
+                .write(buf.tag.page_num, &page.borrow().bytes())?;
         }
         Ok(())
     }
@@ -457,13 +452,10 @@ mod tests {
             RelationData::open(oid, &db_data, &db_name, &rel_name).expect("Error to open relation");
 
         for i in 0..pages {
-            let page_number = relation.borrow_mut().pager.allocate_page().unwrap();
+            let smgr = relation.borrow_mut().smgr();
+            let page_number = smgr.borrow_mut().extend().unwrap();
             let page_data = [i as u8; PAGE_SIZE];
-            relation
-                .borrow_mut()
-                .pager
-                .write_page(page_number, &page_data)
-                .unwrap();
+            smgr.borrow_mut().write(page_number, &page_data).unwrap();
         }
 
         relation
