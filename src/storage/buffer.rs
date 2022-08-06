@@ -135,8 +135,8 @@ impl Hash for BufferTag {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let rel = self.rel.borrow();
         state.write_u32(self.page_num);
-        state.write(rel.db_data.as_bytes());
-        state.write(rel.db_name.as_bytes());
+        state.write(rel.locator.db_data.as_bytes());
+        state.write(rel.locator.db_name.as_bytes());
         state.write(rel.rel_name.as_bytes());
     }
 }
@@ -147,8 +147,8 @@ impl PartialEq for BufferTag {
         let other_rel = other.rel.borrow();
 
         (self.page_num == other.page_num)
-            && (rel.db_data == other_rel.db_data)
-            && (rel.db_name == other_rel.db_name)
+            && (rel.locator.db_data == other_rel.locator.db_data)
+            && (rel.locator.db_name == other_rel.locator.db_name)
             && (rel.rel_name == other_rel.rel_name)
     }
 }
