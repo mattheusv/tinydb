@@ -5,6 +5,7 @@ use crate::Oid;
 
 use super::smgr::{SMgrRelation, SMgrRelationData};
 
+/// RelFileLocator provide all that we need to know to physically access a relation.
 pub struct RelationLocatorData {
     /// Path where database files are stored.
     pub db_data: String,
