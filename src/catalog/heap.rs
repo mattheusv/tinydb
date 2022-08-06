@@ -7,9 +7,8 @@ use crate::{
     },
     storage::{
         bufpage::PageHeader,
-        pager::PAGE_SIZE,
         rel::{Relation, RelationData},
-        BufferPool,
+        BufferPool, PAGE_SIZE,
     },
 };
 use anyhow::Result;

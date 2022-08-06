@@ -1,11 +1,12 @@
+mod pager;
+
 use std::{cell::RefCell, path::Path, rc::Rc};
 
-use super::{
-    pager::{MemPage, PageNumber, Pager},
-    rel::RelationLocator,
-};
+use crate::storage::{rel::RelationLocator, smgr::pager::Pager};
 
 use anyhow::Result;
+
+use super::{MemPage, PageNumber};
 
 /// Represents a storage manger of a relation.
 pub struct SMgrRelationData {

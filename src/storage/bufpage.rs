@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
-use super::{buffer::Page, pager::PAGE_SIZE};
+use super::{buffer::Page, PAGE_SIZE};
 
 /// Represents the fixed size of a page header.
 pub const PAGE_HEADER_SIZE: usize = size_of::<PageHeader>();

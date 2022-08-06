@@ -9,37 +9,20 @@ use std::io::{
 };
 use std::path::Path;
 
+use crate::storage::{MemPage, PageNumber, PAGE_SIZE};
+
 /// Represents the tinydb header size.
 const HEADER_SIZE: usize = 100;
 
-/// Represents the size that a Page can have on database file.
-pub const PAGE_SIZE: usize = 8192;
-
 /// Represents the first N bytes of the file.
-pub const MAGIC_BYTES_SIZE: usize = 6;
+const MAGIC_BYTES_SIZE: usize = 6;
 
 /// Represents the first [MAGIC_BYTES_SIZE] of file.
-pub const MAGIC_BYTES: &[u8; MAGIC_BYTES_SIZE] = b"Tinydb";
-
-/// Represents that a MemPage doest not exists on disk.
-pub const INVALID_PAGE_NUMBER: PageNumber = 0;
+const MAGIC_BYTES: &[u8; MAGIC_BYTES_SIZE] = b"Tinydb";
 
 /// HeaderData is a type that represents the array of bytes
 /// containing the header data from database file.
-pub type HeaderData = [u8; HEADER_SIZE];
-
-/// MemPage is a type that represents the array of bytes of some page in database.
-pub type MemPage = [u8; PAGE_SIZE];
-
-/// Each data file (heap or index) is divided into disk blocks
-/// (which may be thought of as the unit of i/o -- a Bytes buffer
-/// contains exactly one disk block). The blocks are numbered
-/// sequentially, starting at 0.
-///
-/// The access methods, the buffer manager and the storage manager are
-/// more or less the only pieces of code that should be accessing disk
-/// blocks directly.
-pub type PageNumber = u32;
+type HeaderData = [u8; HEADER_SIZE];
 
 /// Represents errors that pager can have.
 #[derive(thiserror::Error, Debug, PartialEq)]
@@ -60,7 +43,7 @@ pub enum Error {
 /// page header data, if change was made is necessary to write
 /// back to disk using [write_header](Pager::write_header) function.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct Header {
+struct Header {
     magic: [u8; MAGIC_BYTES_SIZE],
 }
 
@@ -173,7 +156,7 @@ impl Pager {
     /// Reads the header of database file and returns it in a byte array.
     /// Note that this function can be called even if the page size is unknown,
     /// since the chidb header always occupies the first 100 bytes of the file.
-    pub fn read_header(&mut self) -> Result<Header> {
+    fn read_header(&mut self) -> Result<Header> {
         self.file.seek(SeekFrom::Start(0))?;
         let mut header = [0; HEADER_SIZE];
         self.file.read(&mut header)?;
@@ -182,7 +165,7 @@ impl Pager {
 
     /// Write the header on database file. Note that the write_header function will
     /// always override the current header data if exists.
-    pub fn write_header(&mut self, header: &Header) -> Result<()> {
+    fn write_header(&mut self, header: &Header) -> Result<()> {
         self.file.seek(SeekFrom::Start(0))?;
         self.file.write(&header.serialize()?)?;
         Ok(())

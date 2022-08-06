@@ -1,5 +1,5 @@
 use crate::lru::LRU;
-use crate::storage::{pager::PageNumber, pager::PAGE_SIZE};
+use crate::storage::{PageNumber, PAGE_SIZE};
 use anyhow::{bail, Result};
 use log::debug;
 use std::cell::RefCell;
