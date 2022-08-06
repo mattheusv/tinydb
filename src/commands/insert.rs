@@ -39,8 +39,6 @@ pub fn insert_into(
                 // Iterate over relation attrs and try to find the value that is being inserted
                 // for each attr. If the value does not exists a NULL value should be inserted
                 // on tuple header t_bits array.
-                //
-                // TODO: Add null bit on NULL attr values on tuple header t_bits.
                 for attr in &rel_attrs {
                     // TODO: Find a better way to lookup the attr value that is being inserted
                     let index = columns.iter().position(|ident| ident.value == attr.attname);
