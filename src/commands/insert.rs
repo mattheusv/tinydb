@@ -19,7 +19,7 @@ pub fn insert_into(
     let rel_name = table_name.0[0].to_string();
     let oid = catalog.get_oid_relation(buffer_pool, db_name, &rel_name)?;
 
-    let rel = RelationData::open(oid, db_data, db_name, &rel_name)?;
+    let rel = RelationData::open(oid, db_data, db_name, &rel_name);
 
     match source.body {
         ast::SetExpr::Values(values) => {

@@ -49,8 +49,8 @@ pub type Relation = Rc<RefCell<RelationData>>;
 
 impl RelationData {
     /// Open any relation to the given db data path and db name and relation name.
-    pub fn open(oid: Oid, db_data: &str, db_name: &str, rel_name: &str) -> Result<Relation> {
-        Ok(Rc::new(RefCell::new(RelationData {
+    pub fn open(oid: Oid, db_data: &str, db_name: &str, rel_name: &str) -> Relation {
+        Rc::new(RefCell::new(RelationData {
             locator: Rc::new(RelationLocatorData {
                 db_data: db_data.to_string(),
                 db_name: db_name.to_string(),
@@ -58,7 +58,7 @@ impl RelationData {
             }),
             rel_name: rel_name.to_string(),
             smgr: None,
-        })))
+        }))
     }
 
     /// Returns smgr file handle for a relation, opening it if needed.

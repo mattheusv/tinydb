@@ -35,7 +35,7 @@ pub fn select(
 
                         let tuple_desc = TupleDesc { attrs: rel_attrs };
 
-                        let rel = RelationData::open(oid, db_data, db_name, &rel_name)?;
+                        let rel = RelationData::open(oid, db_data, db_name, &rel_name);
                         let tuples = heap_scan(buffer_pool, &rel)?;
                         print_relation_tuples(output, &rel, tuples, &tuple_desc)?;
                     }

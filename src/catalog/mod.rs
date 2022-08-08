@@ -49,7 +49,7 @@ impl Catalog {
         db_name: &str,
         rel_name: &str,
     ) -> Result<Vec<PgAttribute>> {
-        let pg_attribute = PgAttribute::get_relation(&self.db_data, db_name)?;
+        let pg_attribute = PgAttribute::relation(&self.db_data, db_name);
 
         let rel_oid = self.get_oid_relation(buffer_pool, db_name, rel_name)?;
 
@@ -79,7 +79,7 @@ impl Catalog {
             "pg_class" => Ok(pg_class::RELATION_OID),
             "pg_attribute" => Ok(pg_attribute::RELATION_OID),
             _ => {
-                let pg_class_rel = PgClass::get_relation(&self.db_data, db_name)?;
+                let pg_class_rel = PgClass::relation(&self.db_data, db_name);
 
                 let mut oid = None;
 

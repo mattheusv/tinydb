@@ -28,7 +28,7 @@ pub fn heap_create(
     let new_oid = new_relation_oid(db_data, db_name);
 
     // Create a new relation and initialize a empty pager handle.
-    let new_rel = RelationData::open(new_oid, db_data, db_name, rel_name)?;
+    let new_rel = RelationData::open(new_oid, db_data, db_name, rel_name);
 
     let mut tupledesc = TupleDesc::default();
     for (i, attr) in attrs.iter().enumerate() {
@@ -44,7 +44,7 @@ pub fn heap_create(
     add_new_attribute_tuples(buffer, &new_rel, &tupledesc)?;
 
     // Open pg_class relation to store the new relation
-    let pg_class = PgClass::get_relation(db_data, db_name)?;
+    let pg_class = PgClass::relation(db_data, db_name);
 
     // Now create an entry in pg_class for the relation.
     add_new_relation_tuple(buffer, &pg_class, &new_rel)?;
@@ -65,7 +65,7 @@ fn add_new_attribute_tuples(
     let rel = rel.borrow();
 
     // Open pg_attribute relation to store the new relation attributes.
-    let pg_attribute = PgAttribute::get_relation(&rel.locator.db_data, &rel.locator.db_name)?;
+    let pg_attribute = PgAttribute::relation(&rel.locator.db_data, &rel.locator.db_name);
 
     // Initialize the pg_attribute page header if its new.
     // TODO: All catalog tables shoulb be bootstrapped at  inidbb process.

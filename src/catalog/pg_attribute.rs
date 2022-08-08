@@ -2,7 +2,6 @@ use crate::{
     storage::rel::{Relation, RelationData},
     Oid,
 };
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// Fixed oid of pg_attribute relation.
@@ -29,12 +28,7 @@ pub struct PgAttribute {
 
 impl PgAttribute {
     /// Return the pg_attribute Relation.
-    pub fn get_relation(db_data: &str, db_name: &str) -> Result<Relation> {
-        Ok(RelationData::open(
-            RELATION_OID,
-            db_data,
-            db_name,
-            RELATION_NAME,
-        )?)
+    pub fn relation(db_data: &str, db_name: &str) -> Relation {
+        RelationData::open(RELATION_OID, db_data, db_name, RELATION_NAME)
     }
 }

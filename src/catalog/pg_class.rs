@@ -1,4 +1,3 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -23,12 +22,7 @@ pub struct PgClass {
 
 impl PgClass {
     /// Return the pg_class Relation.
-    pub fn get_relation(db_data: &str, db_name: &str) -> Result<Relation> {
-        Ok(RelationData::open(
-            RELATION_OID,
-            db_data,
-            db_name,
-            RELATION_NAME,
-        )?)
+    pub fn relation(db_data: &str, db_name: &str) -> Relation {
+        RelationData::open(RELATION_OID, db_data, db_name, RELATION_NAME)
     }
 }

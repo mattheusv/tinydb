@@ -448,8 +448,7 @@ mod tests {
         let rel_name = format!("tinydb-tempfile-test-{}", random::<i32>()).to_string();
 
         let oid = new_relation_oid(&db_data, &db_name);
-        let relation =
-            RelationData::open(oid, &db_data, &db_name, &rel_name).expect("Error to open relation");
+        let relation = RelationData::open(oid, &db_data, &db_name, &rel_name);
 
         for i in 0..pages {
             let smgr = relation.borrow_mut().smgr().unwrap();
