@@ -28,8 +28,8 @@ type HeaderData = [u8; HEADER_SIZE];
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum Error {
     /// Represents an invalid page number on database file.
-    #[error("Incorret page number")]
-    IncorrectPageNumber,
+    #[error("Incorret page number {0}")]
+    IncorrectPageNumber(PageNumber),
 
     /// The database file is corrupted. Mostly the magic bytes
     /// is different than [MAGIC_BYTES].
@@ -190,7 +190,7 @@ impl Pager {
     /// Check if a pager number is valid to this database file buffer.
     fn validate_page(&self, page: PageNumber) -> Result<()> {
         if page > self.total_pages || page <= 0 {
-            bail!(Error::IncorrectPageNumber);
+            bail!(Error::IncorrectPageNumber(page));
         }
         Ok(())
     }
@@ -311,7 +311,10 @@ mod tests {
         let result = pager.read_page(1, &mut page);
 
         let err = result.unwrap_err();
-        assert_eq!(Error::IncorrectPageNumber, err.downcast::<Error>().unwrap());
+        assert_eq!(
+            Error::IncorrectPageNumber(1),
+            err.downcast::<Error>().unwrap()
+        );
         Ok(())
     }
 
