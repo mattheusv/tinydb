@@ -198,9 +198,10 @@ impl BufferPool {
         };
         if let Ok(buffer) = self.get_buffer(&buf_tag) {
             debug!(
-                "Page {} exists on memory on buffer {}",
+                "Page {} exists on memory on buffer {} for relation {}",
                 page_num,
-                buffer.borrow().id
+                buffer.borrow().id,
+                rel.borrow().rel_name,
             );
             self.pin_buffer(&buffer);
             Ok(buffer)
@@ -215,7 +216,11 @@ impl BufferPool {
                 self.size
             );
 
-            debug!("Fething page {} from disk", page_num);
+            debug!(
+                "Fething page {} from disk for relation {}",
+                page_num,
+                rel.borrow().rel_name
+            );
 
             // Create a new empty page and read the page data from disk.
             let mut page = Bytes::new();
@@ -246,6 +251,7 @@ impl BufferPool {
     pub fn alloc_buffer(&mut self, rel: &Relation) -> Result<Buffer> {
         let smgr = rel.borrow_mut().smgr()?;
         let page_num = smgr.borrow_mut().extend()?;
+        debug!("New buffer {} allocated", page_num);
         self.fetch_buffer(rel, page_num)
     }
 
@@ -275,6 +281,7 @@ impl BufferPool {
     ///
     /// Return error if the page could not be found in the page table, None otherwise.
     pub fn flush_buffer(&mut self, buffer: &Buffer) -> Result<()> {
+        debug!("Flushing buffer {} to disk", buffer.borrow().id);
         let page = self.get_page(&buffer);
 
         let buffer = buffer.borrow();

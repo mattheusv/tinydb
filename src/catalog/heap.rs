@@ -11,6 +11,7 @@ use crate::{
     Oid,
 };
 use anyhow::Result;
+use log::debug;
 
 use super::{pg_attribute::PgAttribute, pg_class::PgClass};
 
@@ -112,6 +113,11 @@ pub fn initialize_default_page_header(buffer: &mut BufferPool, rel: &Relation) -
 
     buffer.flush_buffer(&buf_id)?;
     buffer.unpin_buffer(buf_id, true)?;
+
+    debug!(
+        "Initialized default pager header data for relation: {}",
+        rel.borrow().rel_name
+    );
 
     Ok(())
 }
