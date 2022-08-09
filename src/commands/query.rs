@@ -3,7 +3,10 @@ use sqlparser::ast;
 use std::io;
 
 use crate::{
-    access::heap::{heap_scan, HeapTuple, TupleDesc},
+    access::{
+        heap::{heap_scan, HeapTuple},
+        tuple::TupleDesc,
+    },
     catalog::{pg_attribute::PgAttribute, pg_class::PgClass, Catalog},
     storage::{
         rel::{Relation, RelationData},

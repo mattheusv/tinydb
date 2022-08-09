@@ -1,7 +1,6 @@
 use std::mem::size_of;
 
 use crate::{
-    catalog::pg_attribute::PgAttribute,
     storage::{
         bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
         freespace,
@@ -12,6 +11,8 @@ use crate::{
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+
+use super::tuple::TupleDesc;
 
 /// Represents the size of a heap header tuple.
 pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeaderFields>();
@@ -170,12 +171,6 @@ impl HeapTuple {
     fn attr_is_null(&self, attnum: usize) -> bool {
         self.has_nulls() && attnum <= self.header.t_bits.len() && self.header.t_bits[attnum - 1]
     }
-}
-
-/// Describe tuple attributes of single relation.
-pub struct TupleDesc {
-    /// List of attributes of a single tuple from a relation.
-    pub attrs: Vec<PgAttribute>,
 }
 
 /// Insert a new tuple into a heap page of the given relation.
