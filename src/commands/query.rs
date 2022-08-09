@@ -7,7 +7,12 @@ use crate::{
         heap::{heap_scan, HeapTuple},
         tuple::TupleDesc,
     },
-    catalog::{pg_attribute::PgAttribute, pg_class::PgClass, Catalog},
+    catalog::{
+        pg_attribute::{self, PgAttribute},
+        pg_class::{self, PgClass},
+        pg_tablespace::{self, PgTablespace},
+        Catalog,
+    },
     storage::{
         rel::{Relation, RelationData},
         BufferPool,
@@ -61,14 +66,14 @@ fn print_relation_tuples(
     let mut records = Vec::new();
 
     match rel.borrow().rel_name.as_str() {
-        "pg_class" => {
+        pg_class::RELATION_NAME => {
             columns.append(&mut vec![String::from("oid"), String::from("relname")]);
             for tuple in tuples {
                 let value = bincode::deserialize::<PgClass>(&tuple.data)?;
                 records.push(vec![value.oid.to_string(), value.relname]);
             }
         }
-        "pg_attribute" => {
+        pg_attribute::RELATION_NAME => {
             columns.append(&mut vec![
                 String::from("attrelid"),
                 String::from("attname"),
@@ -83,6 +88,13 @@ fn print_relation_tuples(
                     value.attnum.to_string(),
                     value.attlen.to_string(),
                 ]);
+            }
+        }
+        pg_tablespace::RELATION_NAME => {
+            columns.append(&mut vec![String::from("oid"), String::from("spcname")]);
+            for tuple in tuples {
+                let value = bincode::deserialize::<PgTablespace>(&tuple.data)?;
+                records.push(vec![value.oid.to_string(), value.spcname]);
             }
         }
         _ => {

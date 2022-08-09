@@ -8,6 +8,7 @@ use self::{pg_attribute::PgAttribute, pg_class::PgClass};
 pub mod heap;
 pub mod pg_attribute;
 pub mod pg_class;
+pub mod pg_tablespace;
 
 /// Genereate a new relation oid that is unique within the database of the given db data.
 pub fn new_relation_oid(db_data: &str, db_name: &str) -> Oid {
@@ -78,6 +79,7 @@ impl Catalog {
         match rel_name {
             "pg_class" => Ok(pg_class::RELATION_OID),
             "pg_attribute" => Ok(pg_attribute::RELATION_OID),
+            "pg_tablespace" => Ok(pg_tablespace::RELATION_OID),
             _ => {
                 let pg_class_rel = PgClass::relation(&self.db_data, db_name);
 

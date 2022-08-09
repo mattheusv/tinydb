@@ -1,13 +1,17 @@
 use std::{fs::create_dir_all, path::Path};
 
 use anyhow::Result;
+use log::debug;
 
 use crate::{
+    access::heap::{heap_insert, HeapTuple, HeapTupleHeader},
     catalog::{
         heap::{self, heap_create},
         pg_attribute::{self, PgAttribute},
         pg_class::{self, PgClass},
+        pg_tablespace::{self, PgTablespace},
     },
+    new_object_id,
     storage::BufferPool,
 };
 
@@ -21,6 +25,7 @@ pub fn init_database(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> R
 
     init_pg_attribute(buffer, db_data, db_name)?;
     init_pg_class(buffer, db_data, db_name)?;
+    init_pg_tablespace(buffer, db_data, db_name)?;
 
     Ok(())
 }
@@ -58,5 +63,33 @@ fn init_pg_class(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Resul
         &PgClass::tuple_desc(),
     )?;
 
+    Ok(())
+}
+
+/// Initialize pg_tablespace relation and insert default tablespace.
+fn init_pg_tablespace(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Result<()> {
+    let pg_tablespace = PgTablespace::relation(db_data, db_name);
+    heap::initialize_default_page_header(buffer, &pg_tablespace)?;
+
+    heap_create(
+        buffer,
+        db_data,
+        db_name,
+        pg_tablespace::RELATION_NAME,
+        pg_tablespace::RELATION_OID,
+        &PgTablespace::tuple_desc(),
+    )?;
+
+    heap_insert(
+        buffer,
+        &pg_tablespace,
+        &mut HeapTuple {
+            header: HeapTupleHeader::default(),
+            data: bincode::serialize(&PgTablespace {
+                oid: new_object_id(),
+                spcname: db_data.to_string(),
+            })?,
+        },
+    )?;
     Ok(())
 }
