@@ -1,5 +1,4 @@
 use std::io;
-use std::path::PathBuf;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -34,8 +33,10 @@ fn main() {
 
     let default_db_name = "tinydb";
 
+    let mut buffer = BufferPool::new(120);
+
     // Create a default tinydb database.
-    init_database(&PathBuf::from("data"), &default_db_name).expect("Failed init default database");
+    init_database(&mut buffer, &"data", &default_db_name).expect("Failed init default database");
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("history.txt").is_err() {
@@ -43,7 +44,6 @@ fn main() {
     }
 
     let mut stdout = io::stdout();
-    let buffer = BufferPool::new(120);
     let mut engine = Engine::new(buffer, "data");
 
     println!("Connected at {} database", default_db_name);

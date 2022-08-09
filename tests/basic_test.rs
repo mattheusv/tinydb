@@ -1,16 +1,15 @@
-use std::path::PathBuf;
-
 use tinydb::{engine::Engine, initdb::init_database, storage::BufferPool};
 
 #[test]
 fn test_insert_select() {
     let default_db_name = "tinydb";
 
+    let mut buffer = BufferPool::new(120);
+
     // Create a default tinydb database.
-    init_database(&PathBuf::from("data"), &default_db_name).expect("Failed init default database");
+    init_database(&mut buffer, &"data", &default_db_name).expect("Failed init default database");
 
     let mut output = Vec::new();
-    let buffer = BufferPool::new(120);
     let mut engine = Engine::new(buffer, "data");
 
     engine

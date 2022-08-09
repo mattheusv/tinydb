@@ -1,4 +1,5 @@
 use crate::{
+    access::tuple::TupleDesc,
     storage::rel::{Relation, RelationData},
     Oid,
 };
@@ -30,5 +31,37 @@ impl PgAttribute {
     /// Return the pg_attribute Relation.
     pub fn relation(db_data: &str, db_name: &str) -> Relation {
         RelationData::open(RELATION_OID, db_data, db_name, RELATION_NAME)
+    }
+
+    /// Return the tuple description from pg_attribute system relation.
+    pub fn tuple_desc() -> TupleDesc {
+        TupleDesc {
+            attrs: vec![
+                PgAttribute {
+                    attrelid: RELATION_OID,
+                    attname: String::from("attrelid"),
+                    attnum: 1,
+                    attlen: 8,
+                },
+                PgAttribute {
+                    attrelid: RELATION_OID,
+                    attname: String::from("attname"),
+                    attnum: 2,
+                    attlen: 7,
+                },
+                PgAttribute {
+                    attrelid: RELATION_OID,
+                    attname: String::from("attnum"),
+                    attnum: 3,
+                    attlen: 6,
+                },
+                PgAttribute {
+                    attrelid: RELATION_OID,
+                    attname: String::from("attlen"),
+                    attnum: 4,
+                    attlen: 6,
+                },
+            ],
+        }
     }
 }
