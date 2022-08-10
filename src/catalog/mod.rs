@@ -77,9 +77,9 @@ impl Catalog {
     ) -> Result<Oid> {
         // TODO: The catalog relations should also be stored inside pg_class.
         match rel_name {
-            "pg_class" => Ok(pg_class::RELATION_OID),
-            "pg_attribute" => Ok(pg_attribute::RELATION_OID),
-            "pg_tablespace" => Ok(pg_tablespace::RELATION_OID),
+            pg_class::RELATION_NAME => Ok(pg_class::RELATION_OID),
+            pg_attribute::RELATION_NAME => Ok(pg_attribute::RELATION_OID),
+            pg_tablespace::RELATION_NAME => Ok(pg_tablespace::RELATION_OID),
             _ => {
                 let pg_class_rel = PgClass::relation(&self.db_data, db_name);
 
