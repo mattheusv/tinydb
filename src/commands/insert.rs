@@ -2,7 +2,7 @@ use anyhow::Result;
 use sqlparser::ast::{self, ObjectName};
 
 use crate::{
-    access::heap::{heap_insert, HeapTuple},
+    access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog::Catalog,
     storage::{rel::RelationData, BufferPool},
 };

@@ -1,6 +1,7 @@
 use crate::{
     access::{
-        heap::{heap_insert, HeapTuple, HeapTupleHeader},
+        heap::heap_insert,
+        heaptuple::{HeapTuple, HeapTupleHeader},
         tuple::TupleDesc,
     },
     storage::{

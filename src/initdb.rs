@@ -1,10 +1,12 @@
 use std::{fs::create_dir_all, path::Path};
 
 use anyhow::Result;
-use log::debug;
 
 use crate::{
-    access::heap::{heap_insert, HeapTuple, HeapTupleHeader},
+    access::{
+        heap::heap_insert,
+        heaptuple::{HeapTuple, HeapTupleHeader},
+    },
     catalog::{
         heap::{self, heap_create},
         pg_attribute::{self, PgAttribute},
