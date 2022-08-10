@@ -446,7 +446,7 @@ mod tests {
         Ok(())
     }
 
-    /// Create a new pager with a some empty pages.
+    /// Create a new disk file with a some empty pages.
     fn test_relation(pages: usize) -> Relation {
         use rand::prelude::random;
 

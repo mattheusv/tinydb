@@ -24,7 +24,7 @@ const MAGIC_BYTES: &[u8; MAGIC_BYTES_SIZE] = b"Tinydb";
 /// containing the header data from database file.
 type HeaderData = [u8; HEADER_SIZE];
 
-/// Represents errors that pager can have.
+/// Represents errors that disk can have.
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum Error {
     /// Represents an invalid page number on database file.
@@ -37,11 +37,11 @@ pub enum Error {
     CorruptedFile,
 }
 
-/// A in memory representation of a pager file header.
+/// A in memory representation of a tinydb file header.
 ///
 /// Note that Header instances are in-memory copy of current
 /// page header data, if change was made is necessary to write
-/// back to disk using [write_header](Pager::write_header) function.
+/// back to disk using [write_header](Disk::write_header) function.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct Header {
     magic: [u8; MAGIC_BYTES_SIZE],
@@ -83,26 +83,26 @@ impl Default for Header {
     }
 }
 
-/// Pager handle all read/write operations on database file.
+/// Disk handle all read/write operations on database file.
 ///
 /// If you want to modify the file, you need to modify the page returned by
-/// the pager and instruct the pager to write it back to disk.
+/// the disk and instruct the disk to write it back to disk.
 ///
-/// The Pager is very simple and always creates an in-memory copy of any page
+/// The Disk is very simple and always creates an in-memory copy of any page
 /// that is read (even if that page has already been read before).
 /// More specifically, pages are read into a MemPage structure.
 #[derive(Debug)]
-pub struct Pager {
+pub struct Disk {
     file: File,
     total_pages: u32,
 }
 
-impl Pager {
+impl Disk {
     /// Open a file for paged access.
     ///
     /// This function opens a database file and verifies that the file
     /// header is correct. If the file is empty (which will happen if the
-    /// pager is given a filename for a file that does not exist) then this
+    /// Disk is given a filename for a file that does not exist) then this
     /// function will initialize the file header using the default values.
     pub fn open(filename: &Path) -> Result<Self> {
         let file = OpenOptions::new()
@@ -110,24 +110,25 @@ impl Pager {
             .read(true)
             .write(true)
             .open(filename)?;
-        let mut pager = Self {
+        let mut disk = Self {
             file,
             total_pages: 0,
         };
-        pager.total_pages = pager.size()?;
+        disk.total_pages = disk.size()?;
 
-        if pager.is_empty()? {
-            pager.initialize_header()?;
+        if disk.is_empty()? {
+            disk.initialize_header()?;
         } else {
-            pager.validate_header()?;
+            disk.validate_header()?;
         }
-        Ok(pager)
+        Ok(disk)
     }
 
-    /// Read a page from file.  This pager reads a page from the disk,
-    /// and updates the in-memory MemPage struct passed on page arg.
-    /// Any changes done to a MemPage will not be effective until call
-    /// the [write_page](Pager::write_page] with that MemPage.
+    /// Read a page from file.  
+    ///
+    /// Reads a page from the disk, and updates the in-memory MemPage struct passed on
+    /// page arg. Any changes done to a MemPage will not be effective until call the
+    /// [write_page](Disk::write_page] with that MemPage.
     pub fn read_page(&mut self, page_number: PageNumber, page: &mut MemPage) -> Result<()> {
         self.validate_page(page_number)?;
         self.file.seek(SeekFrom::Start(self.offset(page_number)))?;
@@ -136,8 +137,9 @@ impl Pager {
         Ok(())
     }
 
-    /// Write a page to file. This pager writes the in-memory copy of a
-    /// page (stored in a MemPage struct) back to disk.
+    /// Write a page to file.
+    ///
+    /// Writes the in-memory copy of a page (stored in a MemPage struct) back to disk.
     pub fn write_page(&mut self, number: PageNumber, page: &MemPage) -> Result<()> {
         self.validate_page(number)?;
         self.file.seek(SeekFrom::Start(self.offset(number)))?;
@@ -187,7 +189,7 @@ impl Pager {
         Ok((len as u32 / PAGE_SIZE as u32) - HEADER_SIZE as u32)
     }
 
-    /// Check if a pager number is valid to this database file buffer.
+    /// Check if a page number is valid to this database file buffer.
     fn validate_page(&self, page: PageNumber) -> Result<()> {
         if page > self.total_pages || page <= 0 {
             bail!(Error::IncorrectPageNumber(page));
@@ -197,7 +199,7 @@ impl Pager {
 
     /// Returns the offset on database file where a Page start given a page number.
     fn offset(&self, page: PageNumber) -> u64 {
-        // Start reading pages after pager header; pages start reading at 0.
+        // Start reading pages after page header; pages start reading at 0.
         (HEADER_SIZE as u32 + page - 1) as u64 * PAGE_SIZE as u64
     }
 
@@ -231,15 +233,15 @@ mod tests {
 
     #[test]
     fn test_first_page_not_override_header() -> Result<()> {
-        let mut pager = open_test_pager()?;
-        let page_number = pager.allocate_page()?;
+        let mut disk = open_test_disk()?;
+        let page_number = disk.allocate_page()?;
         let mem_page = [1; PAGE_SIZE];
-        pager.write_page(page_number, &mem_page)?;
+        disk.write_page(page_number, &mem_page)?;
 
         let mut page = [0; PAGE_SIZE];
-        pager.read_page(page_number, &mut page)?;
+        disk.read_page(page_number, &mut page)?;
 
-        assert_eq!(pager.read_header()?, Header::default());
+        assert_eq!(disk.read_header()?, Header::default());
         assert_eq!(mem_page, page);
 
         Ok(())
@@ -250,53 +252,53 @@ mod tests {
         let file = NamedTempFile::new()?;
         {
             // Open empty database file and create a page.
-            let mut pager = Pager::open(file.path())?;
-            let page_number = pager.allocate_page()?;
+            let mut disk = Disk::open(file.path())?;
+            let page_number = disk.allocate_page()?;
             let page_data = [0; PAGE_SIZE];
-            pager.write_page(page_number, &page_data)?;
+            disk.write_page(page_number, &page_data)?;
         }
 
         // Open an already existed database file and create a new page.
-        let mut pager = Pager::open(file.path())?;
-        let page_number = pager.allocate_page()?;
+        let mut disk = Disk::open(file.path())?;
+        let page_number = disk.allocate_page()?;
         let page_data = [0; PAGE_SIZE];
-        pager.write_page(page_number, &page_data)?;
+        disk.write_page(page_number, &page_data)?;
 
-        assert_eq!(2, pager.size()?);
+        assert_eq!(2, disk.size()?);
         Ok(())
     }
 
     #[test]
-    fn test_pager_size() -> Result<()> {
-        let mut pager = open_test_pager()?;
+    fn test_disk_file_page_size() -> Result<()> {
+        let mut disk = open_test_disk()?;
         let total_pages = 20;
 
         for i in 0..total_pages {
-            let page_number: PageNumber = pager.allocate_page()?;
+            let page_number: PageNumber = disk.allocate_page()?;
             let page_data = [i; PAGE_SIZE];
-            pager.write_page(page_number, &page_data)?;
+            disk.write_page(page_number, &page_data)?;
         }
 
-        assert_eq!(total_pages as u32, pager.size()?);
+        assert_eq!(total_pages as u32, disk.size()?);
 
         Ok(())
     }
 
     #[test]
     fn test_write_read_pages() -> Result<()> {
-        let mut pager = open_test_pager()?;
+        let mut disk = open_test_disk()?;
 
         let total_pages = 20;
 
         // Test creating and reading multiple pages to assert
-        // that the pager read the correct offset.
+        // that the disk read the correct offset.
         for i in 0..total_pages {
-            let page_number: PageNumber = pager.allocate_page()?;
+            let page_number: PageNumber = disk.allocate_page()?;
             let page_data = [i; PAGE_SIZE];
-            pager.write_page(page_number, &page_data)?;
+            disk.write_page(page_number, &page_data)?;
 
             let mut page = [0; PAGE_SIZE];
-            pager.read_page(page_number, &mut page)?;
+            disk.read_page(page_number, &mut page)?;
 
             assert_eq!(page_data, page);
         }
@@ -306,9 +308,9 @@ mod tests {
 
     #[test]
     fn test_read_invalid_page() -> Result<()> {
-        let mut pager = open_test_pager()?;
+        let mut disk = open_test_disk()?;
         let mut page = [0; PAGE_SIZE];
-        let result = pager.read_page(1, &mut page);
+        let result = disk.read_page(1, &mut page);
 
         let err = result.unwrap_err();
         assert_eq!(
@@ -322,7 +324,7 @@ mod tests {
     fn test_read_corrupted_header() -> Result<()> {
         let mut file = NamedTempFile::new()?;
         file.write(&[0; HEADER_SIZE])?;
-        let result = Pager::open(file.path());
+        let result = Disk::open(file.path());
 
         let err = result.unwrap_err();
         assert_eq!(Error::CorruptedFile, err.downcast::<Error>().unwrap());
@@ -330,15 +332,15 @@ mod tests {
     }
 
     #[test]
-    fn test_open_new_pager() -> Result<()> {
-        let mut pager = open_test_pager()?;
-        let header = pager.read_header()?;
+    fn test_open_new_disk() -> Result<()> {
+        let mut disk = open_test_disk()?;
+        let header = disk.read_header()?;
         assert_eq!(header, Header::default());
         Ok(())
     }
 
-    fn open_test_pager() -> Result<Pager> {
+    fn open_test_disk() -> Result<Disk> {
         let file = NamedTempFile::new()?;
-        Pager::open(file.path())
+        Disk::open(file.path())
     }
 }

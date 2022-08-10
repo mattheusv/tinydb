@@ -24,7 +24,7 @@ pub fn heap_create(
     new_rel_oid: Oid,
     tupledesc: &TupleDesc,
 ) -> Result<()> {
-    // Create a new relation and initialize a empty pager handle.
+    // Create a new relation object for the new heap relation.
     let new_rel = RelationData::open(new_rel_oid, db_data, db_name, rel_name);
 
     // Now add tuples to pg_attribute for the attributes in our new relation.
