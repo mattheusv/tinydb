@@ -17,8 +17,6 @@ pub type SMgrRelation = Rc<RefCell<SMgrRelationData>>;
 
 impl SMgrRelationData {
     /// Return a new SMgrRelation object.
-    ///
-    /// Note that this does not attempt to actually open the underlying file.
     pub fn open(locator: &RelationLocator) -> Result<Self> {
         Ok(Self {
             disk: Disk::open(&locator.relation_path()?)?,
