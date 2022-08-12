@@ -97,10 +97,10 @@ fn print_relation_tuples(
             for tuple in tuples {
                 let mut tuple_values = Vec::new();
                 for attr in tuple_desc.attrs.iter() {
-                    let dataum = tuple.get_attr(attr.attnum, tuple_desc);
-                    match dataum {
-                        Some(dataum) => {
-                            let value = bincode::deserialize::<i32>(&dataum)?;
+                    let datum = tuple.get_attr(attr.attnum, tuple_desc);
+                    match datum {
+                        Some(datum) => {
+                            let value = bincode::deserialize::<i32>(&datum)?;
                             tuple_values.push(value.to_string());
                         }
                         None => {

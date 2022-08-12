@@ -5,7 +5,7 @@ use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog::Catalog,
     storage::{rel::RelationData, BufferPool},
-    Dataum,
+    Datum,
 };
 
 pub fn insert_into(
@@ -47,8 +47,8 @@ pub fn insert_into(
                             let value = &row[index];
                             match value {
                                 ast::Expr::Value(value) => {
-                                    let dataum = serialize(&value)?;
-                                    heap_values.push(Some(dataum));
+                                    let datum = serialize(&value)?;
+                                    heap_values.push(Some(datum));
                                 }
                                 _ => todo!(),
                             }
@@ -68,8 +68,8 @@ pub fn insert_into(
     Ok(())
 }
 
-/// Serialize the ast value to a Dataum representation.
-fn serialize(value: &ast::Value) -> Result<Dataum> {
+/// Serialize the ast value to a Datum representation.
+fn serialize(value: &ast::Value) -> Result<Datum> {
     match value {
         ast::Value::Number(value, _) => {
             let value = value.parse::<i32>()?;

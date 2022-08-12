@@ -16,7 +16,7 @@ const FIRST_NORMAL_OBJECT_ID: u64 = 10000;
 /// Objecct identifier.
 pub type Oid = u64;
 
-pub type Dataum = Vec<u8>;
+pub type Datum = Vec<u8>;
 
 /// Atomic counter to increment when allocating new OIDs.
 static OID_COUNTER: AtomicU64 = AtomicU64::new(FIRST_NORMAL_OBJECT_ID);

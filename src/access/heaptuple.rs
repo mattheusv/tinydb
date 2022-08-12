@@ -3,7 +3,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
-use crate::Dataum;
+use crate::Datum;
 
 use super::tuple::TupleDesc;
 
@@ -69,15 +69,15 @@ impl HeapTupleHeader {
 
 impl HeapTuple {
     /// Construct a heap tuple for the given vector of possible datum values.
-    pub fn from_datums(values: Vec<Option<Dataum>>) -> Result<Self> {
+    pub fn from_datums(values: Vec<Option<Datum>>) -> Result<Self> {
         let mut heaptuple = Self::default();
-        for dataum in values {
-            match dataum {
-                Some(mut dataum) => {
+        for datum in values {
+            match datum {
+                Some(mut datum) => {
                     heaptuple.header.t_bits.push(false);
                     heaptuple.header.fields.t_nattrs += 1;
 
-                    heaptuple.data.append(&mut dataum);
+                    heaptuple.data.append(&mut datum);
                 }
                 None => {
                     // Add HEAP_HASNULL bit flag on heap header and add true on t_bits
@@ -131,8 +131,8 @@ impl HeapTuple {
     /// is properly range-checked.
     ///  
     ///  If the field in question has a NULL value, we return None. Otherwise return
-    ///  Some<Dataum> where Dataum represents the actual attribute value on heap.
-    pub fn get_attr(&self, attnum: usize, tuple_desc: &TupleDesc) -> Option<Dataum> {
+    ///  Some<Datum> where Dataum represents the actual attribute value on heap.
+    pub fn get_attr(&self, attnum: usize, tuple_desc: &TupleDesc) -> Option<Datum> {
         if attnum > tuple_desc.attrs.len() || self.attr_is_null(attnum) {
             // Attribute does not exists on tuple.
             return None;
