@@ -5,6 +5,7 @@ use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog::Catalog,
     storage::{rel::RelationData, BufferPool},
+    Dataum,
 };
 
 pub fn insert_into(
@@ -26,7 +27,7 @@ pub fn insert_into(
             let rel_attrs =
                 catalog.get_attributes_from_relation(buffer_pool, db_name, &rel_name)?;
 
-            let mut heap_tuple = HeapTuple::default();
+            let mut heap_values = Vec::new();
 
             // Iterate over all rows on insert to write new tuples.
             for row in &values.0 {
@@ -46,28 +47,37 @@ pub fn insert_into(
                         Some(index) => {
                             let value = &row[index];
                             match value {
-                                ast::Expr::Value(value) => match value {
-                                    ast::Value::Number(value, _) => {
-                                        let value = value.parse::<i32>().unwrap();
-                                        heap_tuple
-                                            .append_data(&mut bincode::serialize(&value).unwrap());
-                                    }
-                                    _ => todo!(),
-                                },
+                                ast::Expr::Value(value) => {
+                                    let dataum = serialize(&value)?;
+                                    heap_values.push(Some(dataum));
+                                }
                                 _ => todo!(),
                             }
                         }
                         None => {
-                            heap_tuple.add_has_nulls_flag();
+                            heap_values.push(None);
                         }
                     }
                 }
             }
 
-            heap_insert(buffer_pool, &rel, &mut heap_tuple)?;
+            heap_insert(buffer_pool, &rel, &mut HeapTuple::from_datums(heap_values)?)?;
         }
         _ => todo!(),
     }
 
     Ok(())
+}
+
+/// Serialize the ast value to a Dataum representation.
+fn serialize(value: &ast::Value) -> Result<Dataum> {
+    match value {
+        ast::Value::Number(value, _) => {
+            let value = value.parse::<i32>()?;
+            Ok(bincode::serialize(&value)?)
+        }
+        _ => {
+            todo!()
+        }
+    }
 }
