@@ -1,7 +1,12 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use crate::{access::heap::heap_iter, new_object_id, storage::BufferPool, Oid};
+use crate::{
+    access::{heap::heap_iter, tuple::TupleDesc},
+    new_object_id,
+    storage::BufferPool,
+    Oid,
+};
 
 use self::{pg_attribute::PgAttribute, pg_class::PgClass};
 
@@ -43,13 +48,13 @@ impl Catalog {
         }
     }
 
-    /// Return all attributes to the given relation name.
-    pub fn get_attributes_from_relation(
+    /// Return the tuple description of the given relation name.
+    pub fn tuple_desc_from_relation(
         &self,
         buffer_pool: &mut BufferPool,
         db_name: &str,
         rel_name: &str,
-    ) -> Result<Vec<PgAttribute>> {
+    ) -> Result<TupleDesc> {
         let pg_attribute = PgAttribute::relation(&self.db_data, db_name);
 
         let rel_oid = self.get_oid_relation(buffer_pool, db_name, rel_name)?;
@@ -65,7 +70,7 @@ impl Catalog {
             Ok(())
         })?;
 
-        Ok(attributes)
+        Ok(TupleDesc { attrs: attributes })
     }
 
     /// Return the oid of the given relation name.

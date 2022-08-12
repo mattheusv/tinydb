@@ -32,13 +32,8 @@ pub fn select(
                         let rel_name = name.0[0].to_string();
                         let oid = catalog.get_oid_relation(buffer_pool, db_name, &rel_name)?;
 
-                        let rel_attrs = catalog.get_attributes_from_relation(
-                            buffer_pool,
-                            db_name,
-                            &rel_name,
-                        )?;
-
-                        let tuple_desc = TupleDesc { attrs: rel_attrs };
+                        let tuple_desc =
+                            catalog.tuple_desc_from_relation(buffer_pool, db_name, &rel_name)?;
 
                         let rel = RelationData::open(oid, db_data, db_name, &rel_name);
                         let tuples = heap_scan(buffer_pool, &rel)?;

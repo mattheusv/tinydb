@@ -24,8 +24,7 @@ pub fn insert_into(
 
     match source.body {
         ast::SetExpr::Values(values) => {
-            let rel_attrs =
-                catalog.get_attributes_from_relation(buffer_pool, db_name, &rel_name)?;
+            let tuple_desc = catalog.tuple_desc_from_relation(buffer_pool, db_name, &rel_name)?;
 
             let mut heap_values = Vec::new();
 
@@ -40,7 +39,7 @@ pub fn insert_into(
                 // Iterate over relation attrs and try to find the value that is being inserted
                 // for each attr. If the value does not exists a NULL value should be inserted
                 // on tuple header t_bits array.
-                for attr in &rel_attrs {
+                for attr in &tuple_desc.attrs {
                     // TODO: Find a better way to lookup the attr value that is being inserted
                     let index = columns.iter().position(|ident| ident.value == attr.attname);
                     match index {
