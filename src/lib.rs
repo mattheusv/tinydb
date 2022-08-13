@@ -1,4 +1,3 @@
-#![feature(slice_as_chunks)]
 use std::slice::Iter;
 
 pub mod commands;

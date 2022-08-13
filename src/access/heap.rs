@@ -50,9 +50,16 @@ where
     let item_id_data = &page_data[PAGE_HEADER_SIZE..page_header.start_free_space as usize];
 
     // Split the raw item_id_data to a list of ItemId.
-    let (item_id_data, _) = item_id_data.as_chunks::<ITEM_ID_SIZE>();
+    let item_id_data = item_id_data.chunks(ITEM_ID_SIZE);
 
     for data in item_id_data {
+        assert_eq!(
+            data.len(),
+            ITEM_ID_SIZE,
+            "Invalid size of heap tuple item: expected {}; got {}",
+            ITEM_ID_SIZE,
+            data.len()
+        );
         // Deserialize a single ItemId from the list item_id_data.
         let item_id = bincode::deserialize::<ItemId>(&data.to_vec())?;
 
