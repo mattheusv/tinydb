@@ -80,32 +80,24 @@ impl Catalog {
         db_name: &str,
         rel_name: &str,
     ) -> Result<Oid> {
-        // TODO: The catalog relations should also be stored inside pg_class.
-        match rel_name {
-            pg_class::RELATION_NAME => Ok(pg_class::RELATION_OID),
-            pg_attribute::RELATION_NAME => Ok(pg_attribute::RELATION_OID),
-            pg_tablespace::RELATION_NAME => Ok(pg_tablespace::RELATION_OID),
-            _ => {
-                let pg_class_rel = PgClass::relation(&self.db_data, db_name);
+        let pg_class_rel = PgClass::relation(&self.db_data, db_name);
 
-                let mut oid = None;
+        let mut oid = None;
 
-                heap_iter(buffer_pool, &pg_class_rel, |tuple| -> Result<()> {
-                    // Do nothing if the oid is already founded.
-                    if oid.is_none() {
-                        let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;
-                        if pg_class.relname == rel_name {
-                            oid = Some(pg_class.oid);
-                        }
-                    }
-                    Ok(())
-                })?;
-
-                match oid {
-                    Some(oid) => Ok(oid),
-                    None => bail!(Error::RelationNotFound(rel_name.to_string())),
+        heap_iter(buffer_pool, &pg_class_rel, |tuple| -> Result<()> {
+            // Do nothing if the oid is already founded.
+            if oid.is_none() {
+                let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;
+                if pg_class.relname == rel_name {
+                    oid = Some(pg_class.oid);
                 }
             }
+            Ok(())
+        })?;
+
+        match oid {
+            Some(oid) => Ok(oid),
+            None => bail!(Error::RelationNotFound(rel_name.to_string())),
         }
     }
 }
