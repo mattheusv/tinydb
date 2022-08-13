@@ -106,7 +106,7 @@ fn add_new_relation_tuple(
 pub fn initialize_default_page_header(buffer: &mut BufferPool, rel: &Relation) -> Result<()> {
     let buf_id = buffer.alloc_buffer(rel)?;
 
-    let mut data = bincode::serialize(&PageHeader::default()).unwrap();
+    let mut data = bincode::serialize(&PageHeader::default())?;
     data.resize(PAGE_SIZE, u8::default());
 
     let page = buffer.get_page(&buf_id);

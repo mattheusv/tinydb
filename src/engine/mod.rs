@@ -4,8 +4,9 @@ use crate::catalog::Catalog;
 use crate::commands::{
     create::create_database, create::create_table, insert::insert_into, query::select,
 };
+use crate::errors::Error;
 use crate::storage::BufferPool;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
@@ -78,9 +79,7 @@ impl Engine {
                 db_name,
                 query,
             ),
-            _ => {
-                todo!()
-            }
+            _ => bail!(Error::UnsupportedOperation(stmt.to_string())),
         }
     }
 }

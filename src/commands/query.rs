@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use sqlparser::ast;
 use std::io;
 
@@ -10,6 +10,7 @@ use crate::{
         pg_tablespace::{self, PgTablespace},
         Catalog,
     },
+    errors::Error,
     storage::{
         rel::{Relation, RelationData},
         BufferPool,
@@ -39,11 +40,11 @@ pub fn select(
                         let tuples = heap_scan(buffer_pool, &rel)?;
                         print_relation_tuples(output, &rel, tuples, &tuple_desc)?;
                     }
-                    _ => todo!(),
+                    _ => bail!(Error::UnsupportedOperation(table.relation.to_string())),
                 }
             }
         }
-        _ => todo!(),
+        _ => bail!(Error::UnsupportedOperation(query.body.to_string())),
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use sqlparser::ast;
 
-use crate::Datums;
+use crate::{errors::Error, Datums};
 
 /// Encode the ast value to a Datum representation.
 pub fn encode(encode_to: &mut Datums, value: &ast::Value) -> Result<()> {
@@ -13,9 +13,7 @@ pub fn encode(encode_to: &mut Datums, value: &ast::Value) -> Result<()> {
         ast::Value::Null => {
             encode_to.push(None);
         }
-        _ => {
-            todo!()
-        }
+        _ => bail!(Error::UnsupportedValue(value.to_string())),
     };
     Ok(())
 }

@@ -1,10 +1,11 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use sqlparser::ast::{self, ObjectName};
 
 use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog::Catalog,
     encode::encode,
+    errors::Error,
     storage::{rel::RelationData, BufferPool},
     Datums,
 };
@@ -31,11 +32,9 @@ pub fn insert_into(
 
             // Iterate over all rows on insert to write new tuples.
             for row in &values.0 {
-                assert_eq!(
-                    row.len(),
-                    columns.len(),
-                    "INSERT has more expressions than target columns"
-                );
+                if row.len() != columns.len() {
+                    bail!("INSERT has more expressions than target columns");
+                }
 
                 // Iterate over relation attrs and try to find the value that is being inserted
                 // for each attr. If the value does not exists a NULL value should be inserted
@@ -50,7 +49,7 @@ pub fn insert_into(
                                 ast::Expr::Value(value) => {
                                     encode(&mut heap_values, &value)?;
                                 }
-                                _ => todo!(),
+                                _ => bail!(Error::UnsupportedOperation(value.to_string())),
                             }
                         }
                         None => {
@@ -62,7 +61,7 @@ pub fn insert_into(
 
             heap_insert(buffer_pool, &rel, &mut HeapTuple::from_datums(heap_values)?)?;
         }
-        _ => todo!(),
+        _ => bail!(Error::UnsupportedOperation(source.to_string())),
     }
 
     Ok(())
