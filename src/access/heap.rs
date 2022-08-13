@@ -17,7 +17,7 @@ pub fn heap_insert(
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
     let page = buffer_pool.get_page(&buffer);
 
-    page_add_item(&page, &tuple.to_raw_tuple()?)?;
+    page_add_item(&page, &tuple.encode()?)?;
 
     buffer_pool.unpin_buffer(buffer, true)?;
 
@@ -58,7 +58,7 @@ where
 
         // Slice the raw page to get a refenrece to a tuple inside the page.
         let data = &page_data[item_id.offset as usize..(item_id.offset + item_id.length) as usize];
-        let tuple = HeapTuple::from_raw_tuple(data)?;
+        let tuple = HeapTuple::decode(data)?;
 
         f(tuple)?;
     }

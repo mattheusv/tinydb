@@ -97,7 +97,7 @@ impl HeapTuple {
     }
 
     /// Create a new heap tuple from raw tuple bytes.
-    pub fn from_raw_tuple(tuple: &[u8]) -> Result<Self> {
+    pub fn decode(tuple: &[u8]) -> Result<Self> {
         let mut header = HeapTupleHeader {
             fields: bincode::deserialize(&tuple[0..HEAP_TUPLE_HEADER_SIZE])?,
             t_bits: Vec::new(),
@@ -115,7 +115,7 @@ impl HeapTuple {
     }
 
     /// Return the heap tuple representation in raw bytes.
-    pub fn to_raw_tuple(&mut self) -> Result<Vec<u8>> {
+    pub fn encode(&mut self) -> Result<Vec<u8>> {
         let mut tuple = bincode::serialize(&self.header.fields)?.to_vec();
         if self.has_nulls() {
             bincode::serialize_into(&mut tuple, &self.header.t_bits)?;
