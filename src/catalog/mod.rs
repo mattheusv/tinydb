@@ -13,6 +13,7 @@ use self::{pg_attribute::PgAttribute, pg_class::PgClass};
 pub mod heap;
 pub mod pg_attribute;
 pub mod pg_class;
+pub mod pg_database;
 pub mod pg_tablespace;
 
 /// Genereate a new relation oid that is unique within the database of the given db data.

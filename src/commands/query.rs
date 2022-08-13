@@ -7,6 +7,7 @@ use crate::{
     catalog::{
         pg_attribute::{self, PgAttribute},
         pg_class::{self, PgClass},
+        pg_database::{self, PgDatabase},
         pg_tablespace::{self, PgTablespace},
         Catalog,
     },
@@ -89,6 +90,21 @@ fn print_relation_tuples(
             for tuple in tuples {
                 let value = bincode::deserialize::<PgTablespace>(&tuple.data)?;
                 records.push(vec![value.oid.to_string(), value.spcname]);
+            }
+        }
+        pg_database::RELATION_NAME => {
+            columns.extend_from_slice(&[
+                String::from("oid"),
+                String::from("datname"),
+                String::from("dattablespace"),
+            ]);
+            for tuple in tuples {
+                let value = bincode::deserialize::<PgDatabase>(&tuple.data)?;
+                records.push(vec![
+                    value.oid.to_string(),
+                    value.datname,
+                    value.dattablespace.to_string(),
+                ]);
             }
         }
         _ => {
