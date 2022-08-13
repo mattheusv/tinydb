@@ -10,6 +10,7 @@ use crate::{
         pg_tablespace::{self, PgTablespace},
         Catalog,
     },
+    encode::decode,
     errors::Error,
     storage::{
         rel::{Relation, RelationData},
@@ -101,8 +102,7 @@ fn print_relation_tuples(
                     let datum = tuple.get_attr(attr.attnum, tuple_desc);
                     match datum {
                         Some(datum) => {
-                            let value = bincode::deserialize::<i32>(&datum)?;
-                            tuple_values.push(value.to_string());
+                            tuple_values.push(decode(&datum)?);
                         }
                         None => {
                             tuple_values.push(String::from("NULL"));
