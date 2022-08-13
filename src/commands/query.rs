@@ -5,11 +5,11 @@ use std::io;
 use crate::{
     access::{heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
     catalog::{
+        self,
         pg_attribute::{self, PgAttribute},
         pg_class::{self, PgClass},
         pg_database::{self, PgDatabase},
         pg_tablespace::{self, PgTablespace},
-        Catalog,
     },
     encode::decode,
     errors::Error,
@@ -21,7 +21,6 @@ use crate::{
 
 pub fn select(
     buffer_pool: &mut BufferPool,
-    catalog: &Catalog,
     db_data: &str,
     output: &mut dyn io::Write,
     db_name: &str,
@@ -33,10 +32,15 @@ pub fn select(
                 match table.relation {
                     ast::TableFactor::Table { name, .. } => {
                         let rel_name = name.0[0].to_string();
-                        let oid = catalog.get_oid_relation(buffer_pool, db_name, &rel_name)?;
+                        let oid =
+                            catalog::get_oid_relation(buffer_pool, db_data, db_name, &rel_name)?;
 
-                        let tuple_desc =
-                            catalog.tuple_desc_from_relation(buffer_pool, db_name, &rel_name)?;
+                        let tuple_desc = catalog::tuple_desc_from_relation(
+                            buffer_pool,
+                            db_data,
+                            db_name,
+                            &rel_name,
+                        )?;
 
                         let rel = RelationData::open(oid, db_data, db_name, &rel_name);
                         let tuples = heap_scan(buffer_pool, &rel)?;

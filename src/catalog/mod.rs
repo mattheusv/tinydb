@@ -35,70 +35,55 @@ pub enum Error {
     RelationNotFound(String),
 }
 
-/// Struct catalog hold rountines and utilities to deal with system catalog relations.
-pub struct Catalog {
-    /// Base data directoy.
-    db_data: String,
+/// Return the tuple description of the given relation name.
+pub fn tuple_desc_from_relation(
+    buffer_pool: &mut BufferPool,
+    db_data: &str,
+    db_name: &str,
+    rel_name: &str,
+) -> Result<TupleDesc> {
+    let pg_attribute = PgAttribute::relation(db_data, db_name);
+
+    let rel_oid = get_oid_relation(buffer_pool, db_data, db_name, rel_name)?;
+
+    let mut attributes = Vec::new();
+
+    heap_iter(buffer_pool, &pg_attribute, |tuple| -> Result<()> {
+        let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
+        if attr.attrelid == rel_oid {
+            attributes.push(attr);
+        }
+
+        Ok(())
+    })?;
+
+    Ok(TupleDesc { attrs: attributes })
 }
 
-impl Catalog {
-    /// Create a new catalog instance using db_data as base data directoy.
-    pub fn new(db_data: &str) -> Self {
-        Self {
-            db_data: db_data.to_string(),
-        }
-    }
+/// Return the oid of the given relation name.
+pub fn get_oid_relation(
+    buffer_pool: &mut BufferPool,
+    db_data: &str,
+    db_name: &str,
+    rel_name: &str,
+) -> Result<Oid> {
+    let pg_class_rel = PgClass::relation(db_data, db_name);
 
-    /// Return the tuple description of the given relation name.
-    pub fn tuple_desc_from_relation(
-        &self,
-        buffer_pool: &mut BufferPool,
-        db_name: &str,
-        rel_name: &str,
-    ) -> Result<TupleDesc> {
-        let pg_attribute = PgAttribute::relation(&self.db_data, db_name);
+    let mut oid = None;
 
-        let rel_oid = self.get_oid_relation(buffer_pool, db_name, rel_name)?;
-
-        let mut attributes = Vec::new();
-
-        heap_iter(buffer_pool, &pg_attribute, |tuple| -> Result<()> {
-            let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
-            if attr.attrelid == rel_oid {
-                attributes.push(attr);
+    heap_iter(buffer_pool, &pg_class_rel, |tuple| -> Result<()> {
+        // Do nothing if the oid is already founded.
+        if oid.is_none() {
+            let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;
+            if pg_class.relname == rel_name {
+                oid = Some(pg_class.oid);
             }
-
-            Ok(())
-        })?;
-
-        Ok(TupleDesc { attrs: attributes })
-    }
-
-    /// Return the oid of the given relation name.
-    pub fn get_oid_relation(
-        &self,
-        buffer_pool: &mut BufferPool,
-        db_name: &str,
-        rel_name: &str,
-    ) -> Result<Oid> {
-        let pg_class_rel = PgClass::relation(&self.db_data, db_name);
-
-        let mut oid = None;
-
-        heap_iter(buffer_pool, &pg_class_rel, |tuple| -> Result<()> {
-            // Do nothing if the oid is already founded.
-            if oid.is_none() {
-                let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;
-                if pg_class.relname == rel_name {
-                    oid = Some(pg_class.oid);
-                }
-            }
-            Ok(())
-        })?;
-
-        match oid {
-            Some(oid) => Ok(oid),
-            None => bail!(Error::RelationNotFound(rel_name.to_string())),
         }
+        Ok(())
+    })?;
+
+    match oid {
+        Some(oid) => Ok(oid),
+        None => bail!(Error::RelationNotFound(rel_name.to_string())),
     }
 }

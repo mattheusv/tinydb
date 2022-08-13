@@ -3,7 +3,7 @@ use sqlparser::ast::{self, ObjectName};
 
 use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple},
-    catalog::Catalog,
+    catalog,
     encode::encode,
     errors::Error,
     storage::{rel::RelationData, BufferPool},
@@ -12,7 +12,6 @@ use crate::{
 
 pub fn insert_into(
     buffer_pool: &mut BufferPool,
-    catalog: &Catalog,
     db_data: &str,
     db_name: &str,
     table_name: ObjectName,
@@ -20,13 +19,14 @@ pub fn insert_into(
     source: Box<ast::Query>,
 ) -> Result<()> {
     let rel_name = table_name.0[0].to_string();
-    let oid = catalog.get_oid_relation(buffer_pool, db_name, &rel_name)?;
+    let oid = catalog::get_oid_relation(buffer_pool, db_data, db_name, &rel_name)?;
 
     let rel = RelationData::open(oid, db_data, db_name, &rel_name);
 
     match source.body {
         ast::SetExpr::Values(values) => {
-            let tuple_desc = catalog.tuple_desc_from_relation(buffer_pool, db_name, &rel_name)?;
+            let tuple_desc =
+                catalog::tuple_desc_from_relation(buffer_pool, db_data, db_name, &rel_name)?;
 
             let mut heap_values = Datums::default();
 

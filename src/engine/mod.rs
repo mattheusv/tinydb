@@ -1,6 +1,5 @@
 use std::io;
 
-use crate::catalog::Catalog;
 use crate::commands::{
     create::create_database, create::create_table, insert::insert_into, query::select,
 };
@@ -15,7 +14,6 @@ const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
 pub struct Engine {
     buffer_pool: BufferPool,
-    catalog: Catalog,
     db_data: String,
 }
 
@@ -31,7 +29,6 @@ impl Engine {
     pub fn new(buffer_pool: BufferPool, db_data: &str) -> Self {
         Self {
             buffer_pool,
-            catalog: Catalog::new(db_data),
             db_data: db_data.to_string(),
         }
     }
@@ -64,21 +61,15 @@ impl Engine {
                 ..
             } => insert_into(
                 &mut self.buffer_pool,
-                &self.catalog,
                 &self.db_data,
                 db_name,
                 table_name,
                 columns,
                 source,
             ),
-            Statement::Query(query) => select(
-                &mut self.buffer_pool,
-                &self.catalog,
-                &self.db_data,
-                output,
-                db_name,
-                query,
-            ),
+            Statement::Query(query) => {
+                select(&mut self.buffer_pool, &self.db_data, output, db_name, query)
+            }
             _ => bail!(Error::UnsupportedOperation(stmt.to_string())),
         }
     }
