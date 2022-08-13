@@ -121,7 +121,7 @@ impl HeapTuple {
             bincode::serialize_into(&mut tuple, &self.header.t_bits)?;
         }
 
-        tuple.append(&mut self.data.clone());
+        tuple.extend_from_slice(&self.data);
         Ok(tuple)
     }
 
