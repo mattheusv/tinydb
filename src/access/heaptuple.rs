@@ -3,7 +3,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
-use crate::Datum;
+use crate::{Datum, Datums};
 
 use super::tuple::TupleDesc;
 
@@ -69,15 +69,15 @@ impl HeapTupleHeader {
 
 impl HeapTuple {
     /// Construct a heap tuple for the given vector of possible datum values.
-    pub fn from_datums(values: Vec<Option<Datum>>) -> Result<Self> {
+    pub fn from_datums(values: Datums) -> Result<Self> {
         let mut heaptuple = Self::default();
-        for datum in values {
+        for datum in values.iter() {
             match datum {
-                Some(mut datum) => {
+                Some(datum) => {
                     heaptuple.header.t_bits.push(false);
                     heaptuple.header.fields.t_nattrs += 1;
 
-                    heaptuple.data.append(&mut datum);
+                    heaptuple.data.extend_from_slice(datum);
                 }
                 None => {
                     // Add HEAP_HASNULL bit flag on heap header and add true on t_bits

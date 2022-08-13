@@ -4,8 +4,9 @@ use sqlparser::ast::{self, ObjectName};
 use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog::Catalog,
+    encode::encode,
     storage::{rel::RelationData, BufferPool},
-    Datum,
+    Datums,
 };
 
 pub fn insert_into(
@@ -26,7 +27,7 @@ pub fn insert_into(
         ast::SetExpr::Values(values) => {
             let tuple_desc = catalog.tuple_desc_from_relation(buffer_pool, db_name, &rel_name)?;
 
-            let mut heap_values = Vec::new();
+            let mut heap_values = Datums::default();
 
             // Iterate over all rows on insert to write new tuples.
             for row in &values.0 {
@@ -47,8 +48,7 @@ pub fn insert_into(
                             let value = &row[index];
                             match value {
                                 ast::Expr::Value(value) => {
-                                    let datum = serialize(&value)?;
-                                    heap_values.push(Some(datum));
+                                    encode(&mut heap_values, &value)?;
                                 }
                                 _ => todo!(),
                             }
@@ -66,17 +66,4 @@ pub fn insert_into(
     }
 
     Ok(())
-}
-
-/// Serialize the ast value to a Datum representation.
-fn serialize(value: &ast::Value) -> Result<Datum> {
-    match value {
-        ast::Value::Number(value, _) => {
-            let value = value.parse::<i32>()?;
-            Ok(bincode::serialize(&value)?)
-        }
-        _ => {
-            todo!()
-        }
-    }
 }
