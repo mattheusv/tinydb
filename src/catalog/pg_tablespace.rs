@@ -13,6 +13,13 @@ pub const RELATION_OID: Oid = 1213;
 
 pub const RELATION_NAME: &'static str = "pg_tablespace";
 
+/// Default tablespace oid to store per database relation files.
+pub const DEFAULTTABLESPACE_OID: Oid = 1663;
+
+/// Global tablespace oid to store global database relation files, such as pg_database and
+/// pg_tablespace.
+pub const GLOBALTABLESPACE_OID: Oid = 1664;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PgTablespace {
     /// OID of tablespace.
