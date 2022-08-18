@@ -17,13 +17,14 @@ use crate::{
         rel::{Relation, RelationData},
         BufferPool,
     },
+    Oid,
 };
 
 pub fn select(
     buffer_pool: &mut BufferPool,
     db_data: &str,
     output: &mut dyn io::Write,
-    db_name: &str,
+    db_oid: &Oid,
     query: Box<ast::Query>,
 ) -> Result<()> {
     match query.body {
@@ -32,17 +33,27 @@ pub fn select(
                 match table.relation {
                     ast::TableFactor::Table { name, .. } => {
                         let rel_name = name.0[0].to_string();
-                        let oid =
-                            catalog::get_oid_relation(buffer_pool, db_data, db_name, &rel_name)?;
+                        let pg_class_rel = catalog::get_pg_class_relation(
+                            buffer_pool,
+                            db_data,
+                            db_oid,
+                            &rel_name,
+                        )?;
 
                         let tuple_desc = catalog::tuple_desc_from_relation(
                             buffer_pool,
                             db_data,
-                            db_name,
+                            db_oid,
                             &rel_name,
                         )?;
 
-                        let rel = RelationData::open(oid, db_data, db_name, &rel_name);
+                        let rel = RelationData::open(
+                            pg_class_rel.oid,
+                            db_data,
+                            pg_class_rel.reltablespace,
+                            db_oid,
+                            &rel_name,
+                        );
                         let tuples = heap_scan(buffer_pool, &rel)?;
                         print_relation_tuples(output, &rel, tuples, &tuple_desc)?;
                     }
@@ -66,10 +77,18 @@ fn print_relation_tuples(
 
     match rel.borrow().rel_name.as_str() {
         pg_class::RELATION_NAME => {
-            columns.append(&mut vec![String::from("oid"), String::from("relname")]);
+            columns.append(&mut vec![
+                String::from("oid"),
+                String::from("relname"),
+                String::from("reltablespace"),
+            ]);
             for tuple in tuples {
                 let value = bincode::deserialize::<PgClass>(&tuple.data)?;
-                records.push(vec![value.oid.to_string(), value.relname]);
+                records.push(vec![
+                    value.oid.to_string(),
+                    value.relname,
+                    value.reltablespace.to_string(),
+                ]);
             }
         }
         pg_attribute::RELATION_NAME => {

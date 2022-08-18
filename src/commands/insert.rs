@@ -7,26 +7,32 @@ use crate::{
     encode::encode,
     errors::Error,
     storage::{rel::RelationData, BufferPool},
-    Datums,
+    Datums, Oid,
 };
 
 pub fn insert_into(
     buffer_pool: &mut BufferPool,
     db_data: &str,
-    db_name: &str,
+    db_oid: &Oid,
     table_name: ObjectName,
     columns: Vec<ast::Ident>,
     source: Box<ast::Query>,
 ) -> Result<()> {
     let rel_name = table_name.0[0].to_string();
-    let oid = catalog::get_oid_relation(buffer_pool, db_data, db_name, &rel_name)?;
+    let pg_class_rel = catalog::get_pg_class_relation(buffer_pool, db_data, db_oid, &rel_name)?;
 
-    let rel = RelationData::open(oid, db_data, db_name, &rel_name);
+    let rel = RelationData::open(
+        pg_class_rel.oid,
+        db_data,
+        pg_class_rel.reltablespace,
+        db_oid,
+        &rel_name,
+    );
 
     match source.body {
         ast::SetExpr::Values(values) => {
             let tuple_desc =
-                catalog::tuple_desc_from_relation(buffer_pool, db_data, db_name, &rel_name)?;
+                catalog::tuple_desc_from_relation(buffer_pool, db_data, db_oid, &rel_name)?;
 
             let mut heap_values = Datums::default();
 

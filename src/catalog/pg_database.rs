@@ -3,15 +3,17 @@ use serde::{Deserialize, Serialize};
 use crate::{
     access::tuple::TupleDesc,
     storage::rel::{Relation, RelationData},
-    Oid,
+    Oid, INVALID_OID,
 };
 
-use super::pg_attribute::PgAttribute;
+use super::{pg_attribute::PgAttribute, pg_tablespace::GLOBALTABLESPACE_OID};
 
 /// Fixed oid of pg_class relation.
 pub const RELATION_OID: Oid = 1262;
 
 pub const RELATION_NAME: &'static str = "pg_database";
+
+pub const TINYDB_OID: Oid = 5;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PgDatabase {
@@ -27,8 +29,14 @@ pub struct PgDatabase {
 
 impl PgDatabase {
     /// Return the pg_database Relation.
-    pub fn relation(db_data: &str, db_name: &str) -> Relation {
-        RelationData::open(RELATION_OID, db_data, db_name, RELATION_NAME)
+    pub fn relation(db_data: &str) -> Relation {
+        RelationData::open(
+            RELATION_OID,
+            db_data,
+            GLOBALTABLESPACE_OID,
+            &INVALID_OID,
+            RELATION_NAME,
+        )
     }
 
     /// Return the tuple description from pg_database system relation.

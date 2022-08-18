@@ -2,6 +2,7 @@ use std::io;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use tinydb::catalog::pg_database;
 use tinydb::engine::Engine;
 use tinydb::initdb::init_database;
 use tinydb::storage::BufferPool;
@@ -36,7 +37,7 @@ fn main() {
     let mut buffer = BufferPool::new(120);
 
     // Create a default tinydb database.
-    init_database(&mut buffer, &"data", &default_db_name).expect("Failed init default database");
+    init_database(&mut buffer, &"data").expect("Failed init default database");
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("history.txt").is_err() {
@@ -52,7 +53,7 @@ fn main() {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
-                if let Err(err) = engine.exec(&mut stdout, &line, default_db_name) {
+                if let Err(err) = engine.exec(&mut stdout, &line, &pg_database::TINYDB_OID) {
                     eprintln!("Error: {:?}", err);
                     continue;
                 }

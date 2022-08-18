@@ -6,7 +6,7 @@ use crate::{
     Oid,
 };
 
-use super::pg_attribute::PgAttribute;
+use super::{pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID};
 
 /// Fixed oid of pg_class relation.
 pub const RELATION_OID: Oid = 1259;
@@ -21,12 +21,21 @@ pub struct PgClass {
 
     /// Relation name.
     pub relname: String,
+
+    /// The tablespace in which this relation is stored.
+    pub reltablespace: Oid,
 }
 
 impl PgClass {
     /// Return the pg_class Relation.
-    pub fn relation(db_data: &str, db_name: &str) -> Relation {
-        RelationData::open(RELATION_OID, db_data, db_name, RELATION_NAME)
+    pub fn relation(db_data: &str, db_oid: &Oid) -> Relation {
+        RelationData::open(
+            RELATION_OID,
+            db_data,
+            DEFAULTTABLESPACE_OID,
+            db_oid,
+            RELATION_NAME,
+        )
     }
 
     /// Return the tuple description from pg_class system relation.
@@ -44,6 +53,12 @@ impl PgClass {
                     attname: String::from("relname"),
                     attnum: 2,
                     attlen: 7,
+                },
+                PgAttribute {
+                    attrelid: RELATION_OID,
+                    attname: String::from("reltablespace"),
+                    attnum: 3,
+                    attlen: 13,
                 },
             ],
         }

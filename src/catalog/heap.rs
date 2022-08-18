@@ -20,19 +20,20 @@ use super::{pg_attribute::PgAttribute, pg_class::PgClass};
 pub fn heap_create(
     buffer: &mut BufferPool,
     db_data: &str,
-    db_name: &str,
+    tablespace: Oid,
+    db_oid: &Oid,
     rel_name: &str,
     new_rel_oid: Oid,
     tupledesc: &TupleDesc,
 ) -> Result<()> {
     // Create a new relation object for the new heap relation.
-    let new_rel = RelationData::open(new_rel_oid, db_data, db_name, rel_name);
+    let new_rel = RelationData::open(new_rel_oid, db_data, tablespace, db_oid, rel_name);
 
     // Now add tuples to pg_attribute for the attributes in our new relation.
     add_new_attribute_tuples(buffer, &new_rel, &tupledesc)?;
 
     // Open pg_class relation to store the new relation
-    let pg_class = PgClass::relation(db_data, db_name);
+    let pg_class = PgClass::relation(db_data, db_oid);
 
     // Now create an entry in pg_class for the relation.
     add_new_relation_tuple(buffer, &pg_class, &new_rel)?;
@@ -53,7 +54,7 @@ fn add_new_attribute_tuples(
     let rel = rel.borrow();
 
     // Open pg_attribute relation to store the new relation attributes.
-    let pg_attribute = PgAttribute::relation(&rel.locator.db_data, &rel.locator.db_name);
+    let pg_attribute = PgAttribute::relation(&rel.locator.db_data, &rel.locator.database);
 
     // Now insert a new tuple on pg_attribute containing the new attributes information.
     for attr in &tupledesc.attrs {
@@ -94,6 +95,7 @@ fn add_new_relation_tuple(
             data: bincode::serialize(&PgClass {
                 oid: new_rel.locator.oid,
                 relname: new_rel.rel_name.clone(),
+                reltablespace: new_rel.locator.tablespace,
             })?,
         },
     )?;

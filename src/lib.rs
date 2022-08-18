@@ -18,6 +18,8 @@ const FIRST_NORMAL_OBJECT_ID: u64 = 10000;
 /// Objecct identifier.
 pub type Oid = u64;
 
+pub const INVALID_OID: Oid = 0;
+
 /// A slice of bytes that represents a value of inside a tuple.
 pub type Datum = Vec<u8>;
 

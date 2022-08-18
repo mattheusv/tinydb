@@ -11,38 +11,49 @@ use crate::{
         heap::{self, heap_create},
         pg_attribute::{self, PgAttribute},
         pg_class::{self, PgClass},
-        pg_database::{self, PgDatabase},
-        pg_tablespace::{self, PgTablespace},
+        pg_database::{self, PgDatabase, TINYDB_OID},
+        pg_tablespace::{self, PgTablespace, DEFAULTTABLESPACE_OID, GLOBALTABLESPACE_OID},
     },
-    new_object_id,
     storage::BufferPool,
+    Oid,
 };
 
 /// Initialize a empty database at the db_data path using db_name as the database name.
-pub fn init_database(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Result<()> {
-    let db_path = Path::new(db_data).join(db_name);
+pub fn init_database(buffer: &mut BufferPool, base_path: &str) -> Result<()> {
+    let db_path = Path::new(base_path)
+        .join("base")
+        .join(pg_database::TINYDB_OID.to_string());
+    let global_path = Path::new(base_path).join("global");
 
     if !db_path.exists() {
-        create_dir_all(db_path)?;
+        create_dir_all(&db_path)?;
     }
 
-    init_pg_attribute(buffer, db_data, db_name)?;
-    init_pg_class(buffer, db_data, db_name)?;
-    init_pg_tablespace(buffer, db_data, db_name)?;
-    init_pg_database(buffer, db_data, db_name)?;
+    if !global_path.exists() {
+        create_dir_all(&global_path)?;
+    }
+
+    // Init per database relations
+    init_pg_attribute(buffer, base_path, &pg_database::TINYDB_OID)?;
+    init_pg_class(buffer, base_path, &pg_database::TINYDB_OID)?;
+
+    // Init global relations
+    init_pg_tablespace(buffer, base_path, &pg_database::TINYDB_OID)?;
+    init_pg_database(buffer, base_path, &pg_database::TINYDB_OID)?;
 
     Ok(())
 }
 
 /// Initialize pg_database relation and insert default system database.
-fn init_pg_database(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Result<()> {
-    let pg_database = PgDatabase::relation(db_data, db_name);
+fn init_pg_database(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result<()> {
+    let pg_database = PgDatabase::relation(db_data);
     heap::initialize_default_page_header(buffer, &pg_database)?;
 
     heap_create(
         buffer,
         db_data,
-        db_name,
+        GLOBALTABLESPACE_OID,
+        db_oid,
         pg_database::RELATION_NAME,
         pg_database::RELATION_OID,
         &PgDatabase::tuple_desc(),
@@ -54,9 +65,9 @@ fn init_pg_database(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Re
         &mut HeapTuple {
             header: HeapTupleHeader::default(),
             data: bincode::serialize(&PgDatabase {
-                oid: new_object_id(),
-                datname: db_name.to_string(),
-                dattablespace: pg_tablespace::GLOBALTABLESPACE_OID,
+                oid: TINYDB_OID,
+                datname: String::from("tinydb"),
+                dattablespace: DEFAULTTABLESPACE_OID,
             })?,
         },
     )?;
@@ -65,14 +76,15 @@ fn init_pg_database(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Re
 }
 
 /// Initialize pg_class relation and insert default system tables.
-fn init_pg_attribute(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Result<()> {
-    let pg_attribute = PgAttribute::relation(db_data, db_name);
+fn init_pg_attribute(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result<()> {
+    let pg_attribute = PgAttribute::relation(db_data, db_oid);
     heap::initialize_default_page_header(buffer, &pg_attribute)?;
 
     heap_create(
         buffer,
         db_data,
-        db_name,
+        DEFAULTTABLESPACE_OID,
+        db_oid,
         pg_attribute::RELATION_NAME,
         pg_attribute::RELATION_OID,
         &PgAttribute::tuple_desc(),
@@ -87,11 +99,12 @@ fn init_pg_attribute(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> R
 /// since this table is required to any other table and itself.
 ///
 /// So here we just declare the pg_class on pg_class system table.
-fn init_pg_class(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Result<()> {
+fn init_pg_class(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result<()> {
     heap_create(
         buffer,
         db_data,
-        db_name,
+        DEFAULTTABLESPACE_OID,
+        db_oid,
         pg_class::RELATION_NAME,
         pg_class::RELATION_OID,
         &PgClass::tuple_desc(),
@@ -101,21 +114,22 @@ fn init_pg_class(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Resul
 }
 
 /// Initialize pg_tablespace relation and insert default tablespace.
-fn init_pg_tablespace(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> Result<()> {
-    let pg_tablespace = PgTablespace::relation(db_data, db_name);
+fn init_pg_tablespace(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result<()> {
+    let pg_tablespace = PgTablespace::relation(db_data);
     heap::initialize_default_page_header(buffer, &pg_tablespace)?;
 
     heap_create(
         buffer,
         db_data,
-        db_name,
+        GLOBALTABLESPACE_OID,
+        db_oid,
         pg_tablespace::RELATION_NAME,
         pg_tablespace::RELATION_OID,
         &PgTablespace::tuple_desc(),
     )?;
 
     let pg_default = PgTablespace {
-        oid: pg_tablespace::DEFAULTTABLESPACE_OID,
+        oid: DEFAULTTABLESPACE_OID,
         spcname: String::from("pg_default"),
     };
 
@@ -129,7 +143,7 @@ fn init_pg_tablespace(buffer: &mut BufferPool, db_data: &str, db_name: &str) -> 
     )?;
 
     let pg_global = PgTablespace {
-        oid: pg_tablespace::GLOBALTABLESPACE_OID,
+        oid: GLOBALTABLESPACE_OID,
         spcname: String::from("pg_global"),
     };
 

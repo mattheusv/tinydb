@@ -1,13 +1,11 @@
-use tinydb::{engine::Engine, initdb::init_database, storage::BufferPool};
+use tinydb::{catalog::pg_database, engine::Engine, initdb::init_database, storage::BufferPool};
 
 #[test]
 fn test_insert_select() {
-    let default_db_name = "tinydb";
-
     let mut buffer = BufferPool::new(120);
 
     // Create a default tinydb database.
-    init_database(&mut buffer, &"data", &default_db_name).expect("Failed init default database");
+    init_database(&mut buffer, &"data").expect("Failed init default database");
 
     let mut output = Vec::new();
     let mut engine = Engine::new(buffer, "data");
@@ -16,7 +14,7 @@ fn test_insert_select() {
         .exec(
             &mut output,
             "CREATE TABLE t(a int, b int, c int);",
-            default_db_name,
+            &pg_database::TINYDB_OID,
         )
         .expect("Error to create table");
 
@@ -25,7 +23,7 @@ fn test_insert_select() {
         .exec(
             &mut output,
             "INSERT INTO t(a, b, c) VALUES(10, 20, 30)",
-            default_db_name,
+            &pg_database::TINYDB_OID,
         )
         .expect("Error to insert data on table");
 
@@ -34,11 +32,15 @@ fn test_insert_select() {
         .exec(
             &mut output,
             "INSERT INTO t(a, c) VALUES(40, 50)",
-            default_db_name,
+            &pg_database::TINYDB_OID,
         )
         .expect("Error to insert data on table");
     engine
-        .exec(&mut output, "INSERT INTO t(b) VALUES(60)", default_db_name)
+        .exec(
+            &mut output,
+            "INSERT INTO t(b) VALUES(60)",
+            &pg_database::TINYDB_OID,
+        )
         .expect("Error to insert data on table");
 
     assert!(
@@ -47,7 +49,7 @@ fn test_insert_select() {
     );
 
     engine
-        .exec(&mut output, "SELECT * FROM t;", default_db_name)
+        .exec(&mut output, "SELECT * FROM t;", &pg_database::TINYDB_OID)
         .expect("Error to insert data on table");
 
     let output =

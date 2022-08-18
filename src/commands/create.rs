@@ -5,8 +5,11 @@ use sqlparser::ast::{self, ObjectName};
 
 use crate::{
     access::tuple::TupleDesc,
-    catalog::{heap, new_relation_oid, pg_attribute::PgAttribute},
+    catalog::{
+        heap, new_relation_oid, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID,
+    },
     storage::BufferPool,
+    Oid,
 };
 
 pub fn create_database(db_data: &str, name: ObjectName) -> Result<()> {
@@ -18,12 +21,12 @@ pub fn create_database(db_data: &str, name: ObjectName) -> Result<()> {
 pub fn create_table(
     buffer_pool: &mut BufferPool,
     db_data: &str,
-    db_name: &str,
+    db_oid: &Oid,
     name: ObjectName,
     columns: Vec<ast::ColumnDef>,
 ) -> Result<()> {
     // Create a new unique oid to the new heap relation.
-    let new_oid = new_relation_oid(db_data, db_name);
+    let new_oid = new_relation_oid(db_data, db_oid);
 
     let mut tupledesc = TupleDesc::default();
     for (i, attr) in columns.iter().enumerate() {
@@ -38,7 +41,8 @@ pub fn create_table(
     heap::heap_create(
         buffer_pool,
         &db_data,
-        db_name,
+        DEFAULTTABLESPACE_OID,
+        db_oid,
         &name.0[0].to_string(),
         new_oid,
         &tupledesc,

@@ -135,9 +135,7 @@ impl Hash for BufferTag {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let rel = self.rel.borrow();
         state.write_u32(self.page_num);
-        state.write(rel.locator.db_data.as_bytes());
-        state.write(rel.locator.db_name.as_bytes());
-        state.write(rel.rel_name.as_bytes());
+        state.write_u64(rel.locator.oid);
     }
 }
 
@@ -145,11 +143,7 @@ impl PartialEq for BufferTag {
     fn eq(&self, other: &Self) -> bool {
         let rel = self.rel.borrow();
         let other_rel = other.rel.borrow();
-
-        (self.page_num == other.page_num)
-            && (rel.locator.db_data == other_rel.locator.db_data)
-            && (rel.locator.db_name == other_rel.locator.db_name)
-            && (rel.rel_name == other_rel.rel_name)
+        (self.page_num == other.page_num) && (rel.locator.oid == other_rel.locator.oid)
     }
 }
 
@@ -281,7 +275,11 @@ impl BufferPool {
     ///
     /// Return error if the page could not be found in the page table, None otherwise.
     pub fn flush_buffer(&mut self, buffer: &Buffer) -> Result<()> {
-        debug!("Flushing buffer {} to disk", buffer.borrow().id);
+        debug!(
+            "Flushing buffer {} of relation {} to disk",
+            buffer.borrow().id,
+            buffer.borrow().tag.rel.borrow().rel_name
+        );
         let page = self.get_page(&buffer);
 
         let buffer = buffer.borrow();

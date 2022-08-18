@@ -5,7 +5,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::Oid;
+use crate::{
+    catalog::pg_tablespace::{DEFAULTTABLESPACE_OID, GLOBALTABLESPACE_OID},
+    Oid, INVALID_OID,
+};
 
 use super::smgr::{SMgrRelation, SMgrRelationData};
 
@@ -14,8 +17,11 @@ pub struct RelationLocatorData {
     /// Path where database files are stored.
     pub db_data: String,
 
-    /// Name of database that this relation belongs.
-    pub db_name: String,
+    /// Tablespace oid where relation is stored.
+    pub tablespace: Oid,
+
+    /// Database oid that this relation belongs.
+    pub database: Oid,
 
     /// Oid of relation.
     pub oid: Oid,
@@ -26,9 +32,27 @@ pub type RelationLocator = Rc<RelationLocatorData>;
 impl RelationLocatorData {
     /// Return the physical path of a relation.
     pub fn relation_path(&self) -> Result<PathBuf> {
-        Ok(Path::new(&self.db_data)
-            .join(&self.db_name)
-            .join(&self.oid.to_string()))
+        assert_ne!(self.tablespace, INVALID_OID);
+        assert_ne!(self.oid, INVALID_OID);
+
+        let path = Path::new(&self.db_data);
+
+        match self.tablespace {
+            DEFAULTTABLESPACE_OID => {
+                assert_ne!(self.database, INVALID_OID);
+                Ok(path
+                    .join("base")
+                    .join(&self.database.to_string())
+                    .join(&self.oid.to_string()))
+            }
+            GLOBALTABLESPACE_OID => {
+                assert_ne!(self.tablespace, INVALID_OID);
+                Ok(path.join("global").join(&self.oid.to_string()))
+            }
+            _ => {
+                todo!()
+            }
+        }
     }
 }
 
@@ -49,11 +73,18 @@ pub type Relation = Rc<RefCell<RelationData>>;
 
 impl RelationData {
     /// Open any relation to the given db data path and db name and relation name.
-    pub fn open(oid: Oid, db_data: &str, db_name: &str, rel_name: &str) -> Relation {
+    pub fn open(
+        oid: Oid,
+        db_data: &str,
+        tablespace: Oid,
+        db_oid: &Oid,
+        rel_name: &str,
+    ) -> Relation {
         Rc::new(RefCell::new(RelationData {
             locator: Rc::new(RelationLocatorData {
                 db_data: db_data.to_string(),
-                db_name: db_name.to_string(),
+                database: db_oid.clone(),
+                tablespace,
                 oid,
             }),
             rel_name: rel_name.to_string(),

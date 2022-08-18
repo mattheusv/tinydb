@@ -5,6 +5,7 @@ use crate::commands::{
 };
 use crate::errors::Error;
 use crate::storage::BufferPool;
+use crate::Oid;
 use anyhow::{bail, Result};
 use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;
@@ -33,11 +34,11 @@ impl Engine {
         }
     }
 
-    pub fn exec(&mut self, output: &mut dyn io::Write, command: &str, db_name: &str) -> Result<()> {
+    pub fn exec(&mut self, output: &mut dyn io::Write, command: &str, db_oid: &Oid) -> Result<()> {
         let ast = Parser::parse_sql(&DIALECT, command)?;
 
         for stmt in ast {
-            self.exec_stmt(output, db_name, stmt)?;
+            self.exec_stmt(output, db_oid, stmt)?;
         }
 
         Ok(())
@@ -46,13 +47,13 @@ impl Engine {
     fn exec_stmt(
         &mut self,
         output: &mut dyn io::Write,
-        db_name: &str,
+        db_oid: &Oid,
         stmt: Statement,
     ) -> Result<()> {
         match stmt {
             Statement::CreateDatabase { db_name, .. } => create_database(&self.db_data, db_name),
             Statement::CreateTable { name, columns, .. } => {
-                create_table(&mut self.buffer_pool, &self.db_data, db_name, name, columns)
+                create_table(&mut self.buffer_pool, &self.db_data, db_oid, name, columns)
             }
             Statement::Insert {
                 table_name,
@@ -62,13 +63,13 @@ impl Engine {
             } => insert_into(
                 &mut self.buffer_pool,
                 &self.db_data,
-                db_name,
+                db_oid,
                 table_name,
                 columns,
                 source,
             ),
             Statement::Query(query) => {
-                select(&mut self.buffer_pool, &self.db_data, output, db_name, query)
+                select(&mut self.buffer_pool, &self.db_data, output, db_oid, query)
             }
             _ => bail!(Error::UnsupportedOperation(stmt.to_string())),
         }

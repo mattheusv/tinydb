@@ -1,7 +1,7 @@
 use crate::{
     access::tuple::TupleDesc,
     storage::rel::{Relation, RelationData},
-    Oid,
+    Oid, INVALID_OID,
 };
 
 use serde::{Deserialize, Serialize};
@@ -31,8 +31,14 @@ pub struct PgTablespace {
 
 impl PgTablespace {
     /// Return the pg_tablespace Relation.
-    pub fn relation(db_data: &str, db_name: &str) -> Relation {
-        RelationData::open(RELATION_OID, db_data, db_name, RELATION_NAME)
+    pub fn relation(db_data: &str) -> Relation {
+        RelationData::open(
+            RELATION_OID,
+            db_data,
+            GLOBALTABLESPACE_OID,
+            &INVALID_OID,
+            RELATION_NAME,
+        )
     }
 
     /// Return the tuple description from pg_class system relation.

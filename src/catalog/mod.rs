@@ -17,8 +17,8 @@ pub mod pg_database;
 pub mod pg_tablespace;
 
 /// Genereate a new relation oid that is unique within the database of the given db data.
-pub fn new_relation_oid(db_data: &str, db_name: &str) -> Oid {
-    let dbpath = Path::new(db_data).join(db_name);
+pub fn new_relation_oid(db_data: &str, db_oid: &Oid) -> Oid {
+    let dbpath = Path::new(db_data).join(db_oid.to_string());
 
     loop {
         let oid = new_object_id();
@@ -39,18 +39,18 @@ pub enum Error {
 pub fn tuple_desc_from_relation(
     buffer_pool: &mut BufferPool,
     db_data: &str,
-    db_name: &str,
+    db_oid: &Oid,
     rel_name: &str,
 ) -> Result<TupleDesc> {
-    let pg_attribute = PgAttribute::relation(db_data, db_name);
+    let pg_attribute = PgAttribute::relation(db_data, db_oid);
 
-    let rel_oid = get_oid_relation(buffer_pool, db_data, db_name, rel_name)?;
+    let pg_class_rel = get_pg_class_relation(buffer_pool, db_data, db_oid, rel_name)?;
 
     let mut attributes = Vec::new();
 
     heap_iter(buffer_pool, &pg_attribute, |tuple| -> Result<()> {
         let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
-        if attr.attrelid == rel_oid {
+        if attr.attrelid == pg_class_rel.oid {
             attributes.push(attr);
         }
 
@@ -61,29 +61,29 @@ pub fn tuple_desc_from_relation(
 }
 
 /// Return the oid of the given relation name.
-pub fn get_oid_relation(
+pub fn get_pg_class_relation(
     buffer_pool: &mut BufferPool,
     db_data: &str,
-    db_name: &str,
+    db_oid: &Oid,
     rel_name: &str,
-) -> Result<Oid> {
-    let pg_class_rel = PgClass::relation(db_data, db_name);
+) -> Result<PgClass> {
+    let pg_class_rel = PgClass::relation(db_data, db_oid);
 
-    let mut oid = None;
+    let mut pg_class_tuple = None;
 
     heap_iter(buffer_pool, &pg_class_rel, |tuple| -> Result<()> {
         // Do nothing if the oid is already founded.
-        if oid.is_none() {
+        if pg_class_tuple.is_none() {
             let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;
             if pg_class.relname == rel_name {
-                oid = Some(pg_class.oid);
+                pg_class_tuple = Some(pg_class);
             }
         }
         Ok(())
     })?;
 
-    match oid {
-        Some(oid) => Ok(oid),
+    match pg_class_tuple {
+        Some(tuple) => Ok(tuple),
         None => bail!(Error::RelationNotFound(rel_name.to_string())),
     }
 }
