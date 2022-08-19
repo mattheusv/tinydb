@@ -47,7 +47,6 @@ pub fn init_database(buffer: &mut BufferPool, base_path: &str) -> Result<()> {
 /// Initialize pg_database relation and insert default system database.
 fn init_pg_database(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result<()> {
     let pg_database = PgDatabase::relation(db_data);
-    heap::initialize_default_page_header(buffer, &pg_database)?;
 
     heap_create(
         buffer,
@@ -77,6 +76,9 @@ fn init_pg_database(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Res
 
 /// Initialize pg_class relation and insert default system tables.
 fn init_pg_attribute(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result<()> {
+    // We need to init the page header before call heap_create because heap_create
+    // actually store the heap attributes on pg_attribute, so the header relation
+    // should already be filled.
     let pg_attribute = PgAttribute::relation(db_data, db_oid);
     heap::initialize_default_page_header(buffer, &pg_attribute)?;
 
@@ -116,7 +118,6 @@ fn init_pg_class(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result
 /// Initialize pg_tablespace relation and insert default tablespace.
 fn init_pg_tablespace(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Result<()> {
     let pg_tablespace = PgTablespace::relation(db_data);
-    heap::initialize_default_page_header(buffer, &pg_tablespace)?;
 
     heap_create(
         buffer,
