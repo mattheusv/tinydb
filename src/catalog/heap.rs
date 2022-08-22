@@ -106,6 +106,11 @@ fn add_new_relation_tuple(
 /// Initialize the default page header values on the given relation. The buffer pool is used to
 /// alloc a new page on relation.
 pub fn initialize_default_page_header(buffer: &mut BufferPool, rel: &Relation) -> Result<()> {
+    if rel.borrow_mut().smgr()?.borrow().size()? > 0 {
+        // Page header already initialized.
+        return Ok(());
+    }
+
     let buf_id = buffer.alloc_buffer(rel)?;
 
     let mut data = bincode::serialize(&PageHeader::default())?;
