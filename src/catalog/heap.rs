@@ -116,7 +116,7 @@ pub fn initialize_default_page_header(buffer: &mut BufferPool, rel: &Relation) -
     let mut data = bincode::serialize(&PageHeader::default())?;
     data.resize(PAGE_SIZE, u8::default());
 
-    let page = buffer.get_page(&buf_id);
+    let page = buffer.get_page(&buf_id)?;
     page.borrow_mut().write_from_vec(data);
 
     buffer.flush_buffer(&buf_id)?;

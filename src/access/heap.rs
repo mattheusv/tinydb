@@ -15,7 +15,7 @@ pub fn heap_insert(
     tuple: &mut HeapTuple,
 ) -> Result<()> {
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
-    let page = buffer_pool.get_page(&buffer);
+    let page = buffer_pool.get_page(&buffer)?;
 
     page_add_item(&page, &tuple.encode()?)?;
 
@@ -41,7 +41,7 @@ where
 {
     // TODO: Iterate over all pages on relation
     let buffer = buffer_pool.fetch_buffer(rel, 1)?;
-    let page = buffer_pool.get_page(&buffer);
+    let page = buffer_pool.get_page(&buffer)?;
     let page_header = PageHeader::new(&page)?;
 
     let page_data = page.borrow().bytes();
