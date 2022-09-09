@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::{convert::TryFrom, mem::size_of};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{Datum, Datums};
 
@@ -238,4 +238,23 @@ impl Varlena {
     pub fn len(&self) -> usize {
         size_of::<u32>() + self.v_len as usize
     }
+}
+
+/// Serialize a string value into varlena struct format with len and raw  bytes representation.
+pub fn varlena_serializer<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let varlena = Varlena::try_from(value).unwrap();
+    varlena.serialize(serializer)
+}
+
+/// Deserialize a varlena string value.
+pub fn varlena_deserializer<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let varlena = Varlena::deserialize(deserializer)?;
+    let value = bincode::deserialize(&varlena.v_data).unwrap();
+    Ok(value)
 }

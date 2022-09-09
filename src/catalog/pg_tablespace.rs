@@ -1,5 +1,8 @@
 use crate::{
-    access::tuple::TupleDesc,
+    access::{
+        heaptuple::{varlena_deserializer, varlena_serializer},
+        tuple::TupleDesc,
+    },
     storage::rel::{Relation, RelationData},
     Oid, INVALID_OID,
 };
@@ -26,6 +29,8 @@ pub struct PgTablespace {
     pub oid: Oid,
 
     /// Tablespace name.
+    #[serde(deserialize_with = "varlena_deserializer")]
+    #[serde(serialize_with = "varlena_serializer")]
     pub spcname: String,
 }
 

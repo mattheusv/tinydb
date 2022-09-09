@@ -1,5 +1,8 @@
 use crate::{
-    access::tuple::TupleDesc,
+    access::{
+        heaptuple::{varlena_deserializer, varlena_serializer},
+        tuple::TupleDesc,
+    },
     storage::rel::{Relation, RelationData},
     Oid,
 };
@@ -20,6 +23,8 @@ pub struct PgAttribute {
     pub attrelid: Oid,
 
     /// The column name.
+    #[serde(deserialize_with = "varlena_deserializer")]
+    #[serde(serialize_with = "varlena_serializer")]
     pub attname: String,
 
     /// The number of the column.
