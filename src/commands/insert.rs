@@ -53,7 +53,7 @@ pub fn insert_into(
                             let value = &row[index];
                             match value {
                                 ast::Expr::Value(value) => {
-                                    encode(&mut heap_values, &value)?;
+                                    encode(&mut heap_values, &value, attr)?;
                                 }
                                 _ => bail!(Error::UnsupportedOperation(value.to_string())),
                             }
@@ -65,7 +65,11 @@ pub fn insert_into(
                 }
             }
 
-            heap_insert(buffer_pool, &rel, &mut HeapTuple::from_datums(heap_values)?)?;
+            heap_insert(
+                buffer_pool,
+                &rel,
+                &mut HeapTuple::from_datums(heap_values, &tuple_desc)?,
+            )?;
         }
         _ => bail!(Error::UnsupportedOperation(source.to_string())),
     }

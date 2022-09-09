@@ -1,5 +1,5 @@
-use anyhow::Result;
-use std::mem::size_of;
+use anyhow::{anyhow, Result};
+use std::{convert::TryFrom, mem::size_of};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,9 @@ pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeaderFields>();
 
 /// Bit flag stored on t_infomask informing if a tuple has null values.
 const HEAP_HASNULL: u16 = 0x0001;
+
+/// Bit flag stored on t_infomask informing if a tuple has variable-width attribute(s).
+const HEAP_HASVARWIDTH: u16 = 0x0002;
 
 /// Hold all fields that is writen on heap tuple header section on disk.
 #[derive(Serialize, Deserialize, Debug)]
@@ -65,15 +68,34 @@ impl HeapTupleHeader {
     pub fn has_nulls(&self) -> bool {
         self.fields.t_infomask & HEAP_HASNULL != 0
     }
+
+    /// Return true if heap tuple has varlena values.
+    pub fn has_var_width(&self) -> bool {
+        self.fields.t_infomask & HEAP_HASVARWIDTH != 0
+    }
 }
 
 impl HeapTuple {
     /// Construct a heap tuple for the given vector of possible datum values.
-    pub fn from_datums(values: Datums) -> Result<Self> {
+    ///
+    /// The tuple desc attributes should be aligned with datum values index, wich
+    /// means that values[i] should references tuple_desc.attrs[i].
+    pub fn from_datums(values: Datums, tuple_desc: &TupleDesc) -> Result<Self> {
         let mut heaptuple = Self::default();
-        for datum in values.iter() {
+        for (attrnum, datum) in values.iter().enumerate() {
+            let attr = tuple_desc
+                .attrs
+                .get(attrnum)
+                .ok_or_else(|| anyhow!("Can not get pg attribute from {}", attrnum))?;
+
             match datum {
                 Some(datum) => {
+                    if attr.attlen < 0 {
+                        // Add HEAP_HASVARWIDTH flag on tuple header to inform that
+                        // the tuple has varlena fields.
+                        heaptuple.header.fields.t_infomask |= HEAP_HASVARWIDTH;
+                    }
+
                     heaptuple.header.t_bits.push(false);
                     heaptuple.header.fields.t_nattrs += 1;
 
@@ -88,7 +110,7 @@ impl HeapTuple {
             }
         }
 
-        if heaptuple.has_nulls() {
+        if heaptuple.header.has_nulls() {
             // TODO: Find a better way to compute t_hoff
             let t_bits_data = bincode::serialize(&heaptuple.header.t_bits)?;
             heaptuple.header.fields.t_hoff += t_bits_data.len() as u16;
@@ -117,7 +139,7 @@ impl HeapTuple {
     /// Return the heap tuple representation in raw bytes.
     pub fn encode(&mut self) -> Result<Vec<u8>> {
         let mut tuple = bincode::serialize(&self.header.fields)?.to_vec();
-        if self.has_nulls() {
+        if self.header.has_nulls() {
             bincode::serialize_into(&mut tuple, &self.header.t_bits)?;
         }
 
@@ -132,38 +154,88 @@ impl HeapTuple {
     ///  
     ///  If the field in question has a NULL value, we return None. Otherwise return
     ///  Some<Datum> where Dataum represents the actual attribute value on heap.
-    pub fn get_attr(&self, attnum: usize, tuple_desc: &TupleDesc) -> Option<Datum> {
+    pub fn get_attr(&self, attnum: usize, tuple_desc: &TupleDesc) -> Result<Option<Datum>> {
         if attnum > tuple_desc.attrs.len() || self.attr_is_null(attnum) {
             // Attribute does not exists on tuple.
-            return None;
+            return Ok(None);
         }
 
-        let attr = &tuple_desc.attrs[attnum - 1];
-
         // Iterate over all tuple attributes to get the correclty offset of the required attribute.
-        let mut offset = 0;
+        let mut off_start = 0;
+        let mut off_end = 0;
         for attr in &tuple_desc.attrs {
-            if attr.attnum == attnum {
-                break;
-            }
-            if self.attr_is_null(attr.attnum) {
+            if self.attr_is_null(attr.attnum) && attr.attnum != attnum {
                 // Skip NULL values.
                 continue;
             }
 
-            offset += attr.attlen;
+            if attr.attlen > 0 {
+                off_end += attr.attlen as usize;
+            } else {
+                // If we don't know the size of attribute value we
+                // decode a varlena struct to get the actual size of
+                // field.
+                let varlena = bincode::deserialize::<Varlena>(&self.data[off_start..])?;
+
+                // Return the varlena value if its the field that was fetched
+                if attr.attnum == attnum {
+                    return Ok(Some(varlena.v_data));
+                }
+
+                // Otherwise, just sum the total size of varlena tuple field.
+                off_end += varlena.len();
+            }
+
+            if attr.attnum == attnum {
+                if self.attr_is_null(attr.attnum) {
+                    return Ok(None);
+                }
+                return Ok(Some(self.data[off_start..off_end].to_vec()));
+            }
+
+            off_start = off_end;
         }
 
-        Some(self.data[offset..offset + attr.attlen].to_vec())
-    }
-
-    /// Return true if heap tuple has null values.
-    pub fn has_nulls(&self) -> bool {
-        self.header.has_nulls()
+        Ok(None)
     }
 
     /// Return true if the given attnum on tuple has a NULL value.
     fn attr_is_null(&self, attnum: usize) -> bool {
-        self.has_nulls() && attnum <= self.header.t_bits.len() && self.header.t_bits[attnum - 1]
+        self.header.has_nulls()
+            && attnum <= self.header.t_bits.len()
+            && self.header.t_bits[attnum - 1]
+    }
+}
+
+/// Variable-length datatypes all share the 'struct varlena' header.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Varlena {
+    /// Total length of the value in bytes
+    ///
+    /// v_len originally does no include itself, call len()
+    /// to get the total length of varlena value (v_len + v_data).
+    pub v_len: u32,
+
+    /// Data contents
+    pub v_data: Vec<u8>,
+}
+
+impl TryFrom<&String> for Varlena {
+    type Error = bincode::Error;
+
+    /// Create a new varlena from a string.
+    fn try_from(value: &String) -> Result<Self, Self::Error> {
+        let data = bincode::serialize(&value)?;
+        Ok(Self {
+            v_len: bincode::serialize(&data)?.len() as u32,
+            v_data: data,
+        })
+    }
+}
+
+impl Varlena {
+    /// Compute the total length of varlena value.
+    pub fn len(&self) -> usize {
+        size_of::<u32>() + self.v_len as usize
     }
 }

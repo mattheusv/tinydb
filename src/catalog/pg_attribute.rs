@@ -5,7 +5,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::pg_tablespace::DEFAULTTABLESPACE_OID;
+use super::{pg_tablespace::DEFAULTTABLESPACE_OID, pg_type};
 
 /// Fixed oid of pg_attribute relation.
 pub const RELATION_OID: Oid = 1249;
@@ -26,7 +26,10 @@ pub struct PgAttribute {
     pub attnum: usize,
 
     /// The number of bytes in the internal representation of the type.
-    pub attlen: usize,
+    pub attlen: i64,
+
+    /// The data type of this column
+    pub atttypid: Oid,
 }
 
 impl PgAttribute {
@@ -50,24 +53,28 @@ impl PgAttribute {
                     attname: String::from("attrelid"),
                     attnum: 1,
                     attlen: 8,
+                    atttypid: pg_type::INT4_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
                     attname: String::from("attname"),
                     attnum: 2,
-                    attlen: 7,
+                    attlen: -1,
+                    atttypid: pg_type::VARCHAR_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
                     attname: String::from("attnum"),
                     attnum: 3,
-                    attlen: 6,
+                    attlen: 8,
+                    atttypid: pg_type::INT4_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
                     attname: String::from("attlen"),
                     attnum: 4,
-                    attlen: 6,
+                    attlen: 8,
+                    atttypid: pg_type::INT4_OID,
                 },
             ],
         }

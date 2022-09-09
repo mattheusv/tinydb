@@ -10,3 +10,17 @@ select * from t;  a   |  b   |  c
 
 
 
+create table t2(a int, b varchar, c int);
+insert into t2(a, b, c) values(1, 'abc', 2);
+insert into t2(b) values('def');
+insert into t2(a) values(3);
+insert into t2(c) values(4);
+select * from t2;  a   |  b   |  c   
+------+------+------
+  1   | abc  |  2   
+ NULL | def  | NULL 
+  3   | NULL | NULL 
+ NULL | NULL |  4   
+
+
+

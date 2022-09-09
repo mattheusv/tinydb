@@ -6,7 +6,7 @@ use crate::{
     Oid, INVALID_OID,
 };
 
-use super::{pg_attribute::PgAttribute, pg_tablespace::GLOBALTABLESPACE_OID};
+use super::{pg_attribute::PgAttribute, pg_tablespace::GLOBALTABLESPACE_OID, pg_type};
 
 /// Fixed oid of pg_class relation.
 pub const RELATION_OID: Oid = 1262;
@@ -47,19 +47,22 @@ impl PgDatabase {
                     attrelid: RELATION_OID,
                     attname: String::from("oid"),
                     attnum: 1,
-                    attlen: 3,
+                    attlen: 8,
+                    atttypid: pg_type::INT4_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
                     attname: String::from("datname"),
                     attnum: 2,
-                    attlen: 7,
+                    attlen: -1,
+                    atttypid: pg_type::VARCHAR_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
                     attname: String::from("dattablespace"),
                     attnum: 3,
-                    attlen: 13,
+                    attlen: 8,
+                    atttypid: pg_type::INT4_OID,
                 },
             ],
         }

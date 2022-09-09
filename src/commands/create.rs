@@ -1,12 +1,13 @@
 use std::{fs, mem::size_of, path::Path};
 
 use anyhow::Result;
-use sqlparser::ast::{self, ObjectName};
+use sqlparser::ast::{self, ColumnDef, DataType, ObjectName};
 
 use crate::{
     access::tuple::TupleDesc,
     catalog::{
         heap, new_relation_oid, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID,
+        pg_type,
     },
     storage::BufferPool,
     Oid,
@@ -30,12 +31,10 @@ pub fn create_table(
 
     let mut tupledesc = TupleDesc::default();
     for (i, attr) in columns.iter().enumerate() {
-        tupledesc.attrs.push(PgAttribute {
-            attrelid: new_oid,
-            attname: attr.name.to_string(),
-            attnum: i + 1,            // Attributes numbers start at 1
-            attlen: size_of::<i32>(), // TODO: Add support for multiple types
-        })
+        // Attributes numbers start at 1
+        tupledesc
+            .attrs
+            .push(new_pg_attribute(new_oid, attr, i + 1)?)
     }
 
     heap::heap_create(
@@ -48,4 +47,30 @@ pub fn create_table(
         &tupledesc,
     )?;
     Ok(())
+}
+
+fn new_pg_attribute(attrelid: Oid, columndef: &ColumnDef, attnum: usize) -> Result<PgAttribute> {
+    let (atttypid, attlen) = oid_type_and_size(&columndef.data_type)?;
+    Ok(PgAttribute {
+        attrelid,
+        attname: columndef.name.to_string(),
+        attnum,
+        attlen,
+        atttypid,
+    })
+}
+
+/// Return the oid and the lenght of the given data type.
+fn oid_type_and_size(typ: &DataType) -> Result<(Oid, i64)> {
+    match typ {
+        DataType::Int(len) => Ok((
+            pg_type::INT4_OID,
+            (len.unwrap_or(size_of::<i32>() as u64)) as i64,
+        )),
+        DataType::Varchar(len) => match len {
+            Some(len) => Ok((pg_type::VARCHAR_OID, *len as i64)),
+            None => Ok((pg_type::VARCHAR_OID, -1)),
+        },
+        _ => todo!(),
+    }
 }

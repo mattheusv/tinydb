@@ -15,6 +15,7 @@ pub mod pg_attribute;
 pub mod pg_class;
 pub mod pg_database;
 pub mod pg_tablespace;
+pub mod pg_type;
 
 /// Genereate a new relation oid that is unique within the database of the given db data.
 pub fn new_relation_oid(db_data: &str, db_oid: &Oid) -> Oid {

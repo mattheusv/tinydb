@@ -42,7 +42,7 @@ pub fn new_object_id() -> Oid {
 /// The values are aligned with the same index of tuple attributes. If the
 /// attribute index is represents by an None it means that this attribute
 /// has a NULL value associated.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Datums(Vec<Option<Datum>>);
 
 impl Datums {

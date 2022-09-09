@@ -6,7 +6,7 @@ use crate::{
 
 use serde::{Deserialize, Serialize};
 
-use super::pg_attribute::PgAttribute;
+use super::{pg_attribute::PgAttribute, pg_type};
 
 /// Fixed oid of pg_attribute relation.
 pub const RELATION_OID: Oid = 1213;
@@ -49,13 +49,15 @@ impl PgTablespace {
                     attrelid: RELATION_OID,
                     attname: String::from("oid"),
                     attnum: 1,
-                    attlen: 3,
+                    attlen: 8,
+                    atttypid: pg_type::INT4_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
                     attname: String::from("spcname"),
                     attnum: 2,
-                    attlen: 7,
+                    attlen: -1,
+                    atttypid: pg_type::VARCHAR_OID,
                 },
             ],
         }

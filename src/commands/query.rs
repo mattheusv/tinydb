@@ -138,10 +138,10 @@ fn print_relation_tuples(
             for tuple in tuples {
                 let mut tuple_values = Vec::new();
                 for attr in tuple_desc.attrs.iter() {
-                    let datum = tuple.get_attr(attr.attnum, tuple_desc);
+                    let datum = tuple.get_attr(attr.attnum, tuple_desc)?;
                     match datum {
                         Some(datum) => {
-                            tuple_values.push(decode(&datum)?);
+                            tuple_values.push(decode(&datum, attr.atttypid)?);
                         }
                         None => {
                             tuple_values.push(String::from("NULL"));
