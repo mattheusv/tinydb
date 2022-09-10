@@ -1,9 +1,5 @@
 use crate::{
-    access::{
-        heap::heap_insert,
-        heaptuple::{HeapTuple, HeapTupleHeader},
-        tuple::TupleDesc,
-    },
+    access::{heap::heap_insert, heaptuple::HeapTuple, tuple::TupleDesc},
     storage::{
         bufpage::PageHeader,
         rel::{Relation, RelationData},
@@ -61,10 +57,7 @@ fn add_new_attribute_tuples(
         heap_insert(
             buffer,
             &pg_attribute,
-            &mut HeapTuple {
-                header: HeapTupleHeader::default(),
-                data: bincode::serialize(&attr)?,
-            },
+            &HeapTuple::with_default_header(&attr)?,
         )?;
     }
 
@@ -90,14 +83,11 @@ fn add_new_relation_tuple(
     heap_insert(
         buffer,
         pg_class,
-        &mut HeapTuple {
-            header: HeapTupleHeader::default(),
-            data: bincode::serialize(&PgClass {
-                oid: new_rel.locator.oid,
-                relname: new_rel.rel_name.clone(),
-                reltablespace: new_rel.locator.tablespace,
-            })?,
-        },
+        &HeapTuple::with_default_header(&PgClass {
+            oid: new_rel.locator.oid,
+            relname: new_rel.rel_name.clone(),
+            reltablespace: new_rel.locator.tablespace,
+        })?,
     )?;
 
     Ok(())

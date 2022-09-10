@@ -9,11 +9,7 @@ use anyhow::Result;
 use super::heaptuple::HeapTuple;
 
 /// Insert a new tuple into a heap page of the given relation.
-pub fn heap_insert(
-    buffer_pool: &mut BufferPool,
-    rel: &Relation,
-    tuple: &mut HeapTuple,
-) -> Result<()> {
+pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
     let page = buffer_pool.get_page(&buffer)?;
 

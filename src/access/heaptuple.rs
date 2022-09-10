@@ -76,6 +76,16 @@ impl HeapTupleHeader {
 }
 
 impl HeapTuple {
+    /// Create a new heap tuple with the given data and default header values.
+    pub fn with_default_header<T>(data: T) -> Result<Self>
+    where
+        T: serde::Serialize,
+    {
+        Ok(Self {
+            header: HeapTupleHeader::default(),
+            data: bincode::serialize(&data)?,
+        })
+    }
     /// Construct a heap tuple for the given vector of possible datum values.
     ///
     /// The tuple desc attributes should be aligned with datum values index, wich
@@ -137,7 +147,7 @@ impl HeapTuple {
     }
 
     /// Return the heap tuple representation in raw bytes.
-    pub fn encode(&mut self) -> Result<Vec<u8>> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut tuple = bincode::serialize(&self.header.fields)?.to_vec();
         if self.header.has_nulls() {
             bincode::serialize_into(&mut tuple, &self.header.t_bits)?;

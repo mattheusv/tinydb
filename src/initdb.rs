@@ -3,10 +3,7 @@ use std::{fs::create_dir_all, path::Path};
 use anyhow::Result;
 
 use crate::{
-    access::{
-        heap::heap_insert,
-        heaptuple::{HeapTuple, HeapTupleHeader},
-    },
+    access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog::{
         heap::{self, heap_create},
         pg_attribute::{self, PgAttribute},
@@ -61,14 +58,11 @@ fn init_pg_database(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> Res
     heap_insert(
         buffer,
         &pg_database,
-        &mut HeapTuple {
-            header: HeapTupleHeader::default(),
-            data: bincode::serialize(&PgDatabase {
-                oid: TINYDB_OID,
-                datname: String::from("tinydb"),
-                dattablespace: DEFAULTTABLESPACE_OID,
-            })?,
-        },
+        &HeapTuple::with_default_header(&PgDatabase {
+            oid: TINYDB_OID,
+            datname: String::from("tinydb"),
+            dattablespace: DEFAULTTABLESPACE_OID,
+        })?,
     )?;
 
     Ok(())
@@ -137,10 +131,7 @@ fn init_pg_tablespace(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> R
     heap_insert(
         buffer,
         &pg_tablespace,
-        &mut HeapTuple {
-            header: HeapTupleHeader::default(),
-            data: bincode::serialize(&pg_default)?,
-        },
+        &HeapTuple::with_default_header(&pg_default)?,
     )?;
 
     let pg_global = PgTablespace {
@@ -151,10 +142,7 @@ fn init_pg_tablespace(buffer: &mut BufferPool, db_data: &str, db_oid: &Oid) -> R
     heap_insert(
         buffer,
         &pg_tablespace,
-        &mut HeapTuple {
-            header: HeapTupleHeader::default(),
-            data: bincode::serialize(&pg_global)?,
-        },
+        &HeapTuple::with_default_header(&pg_global)?,
     )?;
     Ok(())
 }
