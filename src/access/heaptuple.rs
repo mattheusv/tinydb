@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
-use std::{convert::TryFrom, mem::size_of};
+use std::mem::size_of;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
-use crate::{Datum, Datums};
+use crate::{encode::Varlena, Datum, Datums};
 
 use super::tuple::TupleDesc;
 
@@ -215,56 +215,4 @@ impl HeapTuple {
             && attnum <= self.header.t_bits.len()
             && self.header.t_bits[attnum - 1]
     }
-}
-
-/// Variable-length datatypes all share the 'struct varlena' header.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Varlena {
-    /// Total length of the value in bytes
-    ///
-    /// v_len originally does no include itself, call len()
-    /// to get the total length of varlena value (v_len + v_data).
-    pub v_len: u32,
-
-    /// Data contents
-    pub v_data: Vec<u8>,
-}
-
-impl TryFrom<&String> for Varlena {
-    type Error = bincode::Error;
-
-    /// Create a new varlena from a string.
-    fn try_from(value: &String) -> Result<Self, Self::Error> {
-        let data = bincode::serialize(&value)?;
-        Ok(Self {
-            v_len: bincode::serialize(&data)?.len() as u32,
-            v_data: data,
-        })
-    }
-}
-
-impl Varlena {
-    /// Compute the total length of varlena value.
-    pub fn len(&self) -> usize {
-        size_of::<u32>() + self.v_len as usize
-    }
-}
-
-/// Serialize a string value into varlena struct format with len and raw  bytes representation.
-pub fn varlena_serializer<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let varlena = Varlena::try_from(value).unwrap();
-    varlena.serialize(serializer)
-}
-
-/// Deserialize a varlena string value.
-pub fn varlena_deserializer<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let varlena = Varlena::deserialize(deserializer)?;
-    let value = bincode::deserialize(&varlena.v_data).unwrap();
-    Ok(value)
 }

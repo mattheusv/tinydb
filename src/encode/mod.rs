@@ -1,10 +1,10 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, mem::size_of};
 
 use anyhow::{bail, Result};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlparser::ast;
 
 use crate::{
-    access::heaptuple::Varlena,
     catalog::{pg_attribute::PgAttribute, pg_type},
     errors::Error,
     Datum, Datums, Oid,
@@ -48,4 +48,56 @@ pub fn decode(datum: &Datum, typ: Oid) -> Result<String> {
         pg_type::VARCHAR_OID => Ok(bincode::deserialize::<String>(&datum)?),
         _ => bail!("decode: Unsupported type to decode"),
     }
+}
+
+/// Variable-length datatypes all share the 'struct varlena' header.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Varlena {
+    /// Total length of the value in bytes
+    ///
+    /// v_len originally does no include itself, call len()
+    /// to get the total length of varlena value (v_len + v_data).
+    pub v_len: u32,
+
+    /// Data contents
+    pub v_data: Vec<u8>,
+}
+
+impl TryFrom<&String> for Varlena {
+    type Error = bincode::Error;
+
+    /// Create a new varlena from a string.
+    fn try_from(value: &String) -> Result<Self, Self::Error> {
+        let data = bincode::serialize(&value)?;
+        Ok(Self {
+            v_len: bincode::serialize(&data)?.len() as u32,
+            v_data: data,
+        })
+    }
+}
+
+impl Varlena {
+    /// Compute the total length of varlena value.
+    pub fn len(&self) -> usize {
+        size_of::<u32>() + self.v_len as usize
+    }
+}
+
+/// Serialize a string value into varlena struct format with len and raw  bytes representation.
+pub fn varlena_serializer<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let varlena = Varlena::try_from(value).unwrap();
+    varlena.serialize(serializer)
+}
+
+/// Deserialize a varlena string value.
+pub fn varlena_deserializer<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let varlena = Varlena::deserialize(deserializer)?;
+    let value = bincode::deserialize(&varlena.v_data).unwrap();
+    Ok(value)
 }
