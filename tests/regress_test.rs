@@ -17,9 +17,16 @@ fn test_regress() {
 
     let mut buffer = BufferPool::new(120);
 
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir to regress tests");
+    let db_data = temp_dir
+        .path()
+        .to_str()
+        .expect("Failed to convert temp dir to string")
+        .to_string();
+
     // Create a default tinydb database.
-    init_database(&mut buffer, &"data").expect("Failed init default database");
-    let mut engine = Engine::new(buffer, "data");
+    init_database(&mut buffer, &db_data).expect("Failed init default database");
+    let mut engine = Engine::new(buffer, &db_data);
 
     for sql_file in sql_entries {
         let mut output = Vec::new();
