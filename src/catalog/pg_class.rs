@@ -27,6 +27,10 @@ pub struct PgClass {
 
     /// The tablespace in which this relation is stored.
     pub reltablespace: Oid,
+
+    /// True if this table is shared across all databases in the cluster. Only certain system
+    /// catalogs (such as pg_database) are shared.
+    pub relisshared: bool,
 }
 
 impl PgClass {
@@ -65,6 +69,13 @@ impl PgClass {
                     attnum: 3,
                     attlen: 8,
                     atttypid: pg_type::INT4_OID,
+                },
+                PgAttribute {
+                    attrelid: RELATION_OID,
+                    attname: String::from("relisshared"),
+                    attnum: 4,
+                    attlen: 1,
+                    atttypid: pg_type::BOOL_OID,
                 },
             ],
         }

@@ -8,7 +8,7 @@ use crate::{
     encode::decode,
     errors::Error,
     storage::{rel::RelationData, BufferPool},
-    Oid,
+    Oid, INVALID_OID,
 };
 
 pub fn select(
@@ -42,7 +42,11 @@ pub fn select(
                             pg_class_rel.oid,
                             db_data,
                             pg_class_rel.reltablespace,
-                            db_oid,
+                            if pg_class_rel.relisshared {
+                                &INVALID_OID
+                            } else {
+                                db_oid
+                            },
                             &rel_name,
                         );
                         let tuples = heap_scan(buffer_pool, &rel)?;

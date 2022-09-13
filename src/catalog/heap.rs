@@ -10,7 +10,7 @@ use crate::{
 use anyhow::Result;
 use log::debug;
 
-use super::{pg_attribute::PgAttribute, pg_class::PgClass};
+use super::{pg_attribute::PgAttribute, pg_class::PgClass, pg_tablespace::GLOBALTABLESPACE_OID};
 
 /// Create a new cataloged heap relation.
 pub fn heap_create(
@@ -87,6 +87,7 @@ fn add_new_relation_tuple(
             oid: new_rel.locator.oid,
             relname: new_rel.rel_name.clone(),
             reltablespace: new_rel.locator.tablespace,
+            relisshared: new_rel.locator.tablespace == GLOBALTABLESPACE_OID,
         })?,
     )?;
 
