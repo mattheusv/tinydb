@@ -46,6 +46,6 @@ fn test_regress() {
 
         fs::write(output_path.join(sql_name), output).unwrap();
 
-        assert_eq!(expected_sql, output);
+        assert_eq!(expected_sql, output, "Failed to match file {:?}", sql_file);
     }
 }
