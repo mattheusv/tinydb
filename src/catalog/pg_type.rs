@@ -5,3 +5,4 @@ use crate::Oid;
 
 pub const INT4_OID: Oid = 23;
 pub const VARCHAR_OID: Oid = 1043;
+pub const BOOL_OID: Oid = 16;

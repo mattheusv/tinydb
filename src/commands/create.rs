@@ -1,6 +1,6 @@
 use std::{fs, mem::size_of, path::Path};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use sqlparser::ast::{self, ColumnDef, DataType, ObjectName};
 
 use crate::{
@@ -71,6 +71,7 @@ fn oid_type_and_size(typ: &DataType) -> Result<(Oid, i64)> {
             Some(len) => Ok((pg_type::VARCHAR_OID, *len as i64)),
             None => Ok((pg_type::VARCHAR_OID, -1)),
         },
-        _ => todo!(),
+        DataType::Boolean => Ok((pg_type::BOOL_OID, size_of::<bool>() as i64)),
+        _ => bail!("Not supported data type: {}", typ),
     }
 }

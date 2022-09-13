@@ -11,3 +11,6 @@ insert into t2(a) values(3);
 insert into t2(c) values(4);
 select * from t2;
 
+create table t3(a boolean, b boolean);
+insert into t3(a, b) values (true, false);
+select * from t3;

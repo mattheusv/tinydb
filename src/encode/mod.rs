@@ -33,6 +33,9 @@ pub fn encode(encode_to: &mut Datums, value: &ast::Value, attr: &PgAttribute) ->
         ast::Value::Null => {
             encode_to.push(None);
         }
+        ast::Value::Boolean(value) => {
+            bincode::serialize_into(encode_to, value)?;
+        }
         _ => bail!(Error::UnsupportedValue(value.to_string())),
     };
     Ok(())
@@ -46,6 +49,7 @@ pub fn decode(datum: &Datum, typ: Oid) -> Result<String> {
     match typ {
         pg_type::INT4_OID => Ok(bincode::deserialize::<i32>(&datum)?.to_string()),
         pg_type::VARCHAR_OID => Ok(bincode::deserialize::<String>(&datum)?),
+        pg_type::BOOL_OID => Ok(bincode::deserialize::<bool>(&datum)?.to_string()),
         _ => bail!("decode: Unsupported type to decode"),
     }
 }
