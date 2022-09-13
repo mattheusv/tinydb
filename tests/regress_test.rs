@@ -14,14 +14,15 @@ fn test_regress() {
 
     let expected_path = Path::new("tests").join("regress").join("expected");
     let output_path = Path::new("tests").join("regress").join("output");
+
+    let mut buffer = BufferPool::new(120);
+
+    // Create a default tinydb database.
+    init_database(&mut buffer, &"data").expect("Failed init default database");
+    let mut engine = Engine::new(buffer, "data");
+
     for sql_file in sql_entries {
-        let mut buffer = BufferPool::new(120);
-
-        // Create a default tinydb database.
-        init_database(&mut buffer, &"data").expect("Failed init default database");
-
         let mut output = Vec::new();
-        let mut engine = Engine::new(buffer, "data");
 
         let sql_name = sql_file
             .file_name()
