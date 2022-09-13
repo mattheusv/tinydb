@@ -17,6 +17,14 @@ struct Flags {
     #[structopt(short = "q", long = "quiet")]
     quiet: bool,
 
+    /// Initialize the database directory.
+    #[structopt(long = "init")]
+    init: bool,
+
+    /// Path to store database files.
+    #[structopt(long = "db-path", default_value = "data")]
+    db_path: String,
+
     /// Verbose mode (-v, -vv, -vvv, etc)
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbose: usize,
@@ -36,8 +44,9 @@ fn main() {
 
     let mut buffer = BufferPool::new(120);
 
-    // Create a default tinydb database.
-    init_database(&mut buffer, &"data").expect("Failed init default database");
+    if flags.init {
+        init_database(&mut buffer, &"data").expect("Failed init default database");
+    }
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("history.txt").is_err() {
@@ -45,7 +54,7 @@ fn main() {
     }
 
     let mut stdout = io::stdout();
-    let mut engine = Engine::new(buffer, "data");
+    let mut engine = Engine::new(buffer, &flags.db_path);
 
     println!("Connected at {} database", default_db_name);
     loop {
