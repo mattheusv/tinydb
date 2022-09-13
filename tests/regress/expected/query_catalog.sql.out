@@ -1,0 +1,55 @@
+select * from pg_class;
+  oid  |    relname    | reltablespace | relisshared 
+-------+---------------+---------------+-------------
+ 1249  | pg_attribute  |     1663      |    false    
+ 1259  |   pg_class    |     1663      |    false    
+ 1213  | pg_tablespace |     1664      |    true     
+ 1262  |  pg_database  |     1664      |    true     
+ 10000 |       t       |     1663      |    false    
+ 10001 |      t2       |     1663      |    false    
+ 10002 |      t3       |     1663      |    false    
+
+
+
+select * from pg_attribute;
+ attrelid |    attname    | attnum | attlen 
+----------+---------------+--------+--------
+   1249   |   attrelid    |   1    |   8    
+   1249   |    attname    |   2    |   -1   
+   1249   |    attnum     |   3    |   8    
+   1249   |    attlen     |   4    |   8    
+   1259   |      oid      |   1    |   8    
+   1259   |    relname    |   2    |   -1   
+   1259   | reltablespace |   3    |   8    
+   1259   |  relisshared  |   4    |   1    
+   1213   |      oid      |   1    |   8    
+   1213   |    spcname    |   2    |   -1   
+   1262   |      oid      |   1    |   8    
+   1262   |    datname    |   2    |   -1   
+   1262   | dattablespace |   3    |   8    
+  10000   |       a       |   1    |   4    
+  10000   |       b       |   2    |   4    
+  10000   |       c       |   3    |   4    
+  10001   |       a       |   1    |   4    
+  10001   |       b       |   2    |   -1   
+  10001   |       c       |   3    |   4    
+  10002   |       a       |   1    |   1    
+  10002   |       b       |   2    |   1    
+
+
+
+select * from pg_database;
+ oid | datname | dattablespace 
+-----+---------+---------------
+  5  | tinydb  |     1663      
+
+
+
+select * from pg_tablespace;
+ oid  |  spcname   
+------+------------
+ 1663 | pg_default 
+ 1664 | pg_global  
+
+
+
