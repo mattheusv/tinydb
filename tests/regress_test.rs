@@ -15,7 +15,8 @@ fn test_regress() {
     let expected_path = Path::new("tests").join("regress").join("expected");
     let output_path = Path::new("tests").join("regress").join("output");
 
-    let mut buffer = BufferPool::new(120);
+    // TODO: Make the buffer pool configurable via SQL.
+    let mut buffer = BufferPool::new(5);
 
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir to regress tests");
     let db_data = temp_dir
