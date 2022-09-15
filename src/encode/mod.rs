@@ -47,7 +47,7 @@ pub fn encode(encode_to: &mut Datums, value: &ast::Value, attr: &PgAttribute) ->
 // that represents a SQL value.
 pub fn decode(datum: &Datum, typ: Oid) -> Result<String> {
     match typ {
-        pg_type::INT4_OID => Ok(bincode::deserialize::<i32>(&datum)?.to_string()),
+        pg_type::INT_OID => Ok(bincode::deserialize::<i32>(&datum)?.to_string()),
         pg_type::VARCHAR_OID => Ok(bincode::deserialize::<String>(&datum)?),
         pg_type::BOOL_OID => Ok(bincode::deserialize::<bool>(&datum)?.to_string()),
         _ => bail!("decode: Unsupported type to decode"),

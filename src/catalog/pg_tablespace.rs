@@ -53,7 +53,7 @@ impl PgTablespace {
                     attname: String::from("oid"),
                     attnum: 1,
                     attlen: 8,
-                    atttypid: pg_type::INT4_OID,
+                    atttypid: pg_type::INT_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,

@@ -56,7 +56,7 @@ impl PgAttribute {
                     attname: String::from("attrelid"),
                     attnum: 1,
                     attlen: 8,
-                    atttypid: pg_type::INT4_OID,
+                    atttypid: pg_type::INT_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
@@ -70,14 +70,14 @@ impl PgAttribute {
                     attname: String::from("attnum"),
                     attnum: 3,
                     attlen: 8,
-                    atttypid: pg_type::INT4_OID,
+                    atttypid: pg_type::INT_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
                     attname: String::from("attlen"),
                     attnum: 4,
                     attlen: 8,
-                    atttypid: pg_type::INT4_OID,
+                    atttypid: pg_type::INT_OID,
                 },
             ],
         }

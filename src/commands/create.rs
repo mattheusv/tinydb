@@ -64,7 +64,7 @@ fn new_pg_attribute(attrelid: Oid, columndef: &ColumnDef, attnum: usize) -> Resu
 fn oid_type_and_size(typ: &DataType) -> Result<(Oid, i64)> {
     match typ {
         DataType::Int(len) => Ok((
-            pg_type::INT4_OID,
+            pg_type::INT_OID,
             (len.unwrap_or(size_of::<i32>() as u64)) as i64,
         )),
         DataType::Varchar(len) => match len {

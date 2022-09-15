@@ -51,7 +51,7 @@ impl PgDatabase {
                     attname: String::from("oid"),
                     attnum: 1,
                     attlen: 8,
-                    atttypid: pg_type::INT4_OID,
+                    atttypid: pg_type::INT_OID,
                 },
                 PgAttribute {
                     attrelid: RELATION_OID,
@@ -65,7 +65,7 @@ impl PgDatabase {
                     attname: String::from("dattablespace"),
                     attnum: 3,
                     attlen: 8,
-                    atttypid: pg_type::INT4_OID,
+                    atttypid: pg_type::INT_OID,
                 },
             ],
         }
