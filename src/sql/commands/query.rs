@@ -5,8 +5,7 @@ use std::io;
 use crate::{
     access::{heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
     catalog,
-    errors::Error,
-    sql::encode::decode,
+    sql::{commands::SQLError, encode::decode},
     storage::{rel::RelationData, BufferPool},
     Oid, INVALID_OID,
 };
@@ -52,11 +51,11 @@ pub fn select(
                         let tuples = heap_scan(buffer_pool, &rel)?;
                         print_relation_tuples(output, tuples, &tuple_desc)?;
                     }
-                    _ => bail!(Error::UnsupportedOperation(table.relation.to_string())),
+                    _ => bail!(SQLError::Unsupported(table.relation.to_string())),
                 }
             }
         }
-        _ => bail!(Error::UnsupportedOperation(query.body.to_string())),
+        _ => bail!(SQLError::Unsupported(query.body.to_string())),
     }
     Ok(())
 }

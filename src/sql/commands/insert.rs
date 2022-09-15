@@ -4,8 +4,7 @@ use sqlparser::ast::{self, ObjectName};
 use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog,
-    errors::Error,
-    sql::encode::encode,
+    sql::{commands::SQLError, encode::encode},
     storage::{rel::RelationData, BufferPool},
     Datums, Oid,
 };
@@ -55,7 +54,7 @@ pub fn insert_into(
                                 ast::Expr::Value(value) => {
                                     encode(&mut heap_values, &value, attr)?;
                                 }
-                                _ => bail!(Error::UnsupportedOperation(value.to_string())),
+                                _ => bail!(SQLError::Unsupported(value.to_string())),
                             }
                         }
                         None => {
@@ -71,7 +70,7 @@ pub fn insert_into(
                 &mut HeapTuple::from_datums(heap_values, &tuple_desc)?,
             )?;
         }
-        _ => bail!(Error::UnsupportedOperation(source.to_string())),
+        _ => bail!(SQLError::Unsupported(source.to_string())),
     }
 
     Ok(())

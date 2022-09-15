@@ -6,7 +6,6 @@ use sqlparser::ast;
 
 use crate::{
     catalog::{pg_attribute::PgAttribute, pg_type},
-    errors::Error,
     Datum, Datums, Oid,
 };
 
@@ -36,7 +35,7 @@ pub fn encode(encode_to: &mut Datums, value: &ast::Value, attr: &PgAttribute) ->
         ast::Value::Boolean(value) => {
             bincode::serialize_into(encode_to, value)?;
         }
-        _ => bail!(Error::UnsupportedValue(value.to_string())),
+        _ => bail!("Unsupported value {}", value.to_string()),
     };
     Ok(())
 }

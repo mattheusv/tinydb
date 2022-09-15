@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::errors::Error;
+use crate::sql::commands::SQLError;
 use crate::sql::commands::{
     create::create_database, create::create_table, insert::insert_into, query::select,
 };
@@ -71,7 +71,7 @@ impl Engine {
             Statement::Query(query) => {
                 select(&mut self.buffer_pool, &self.db_data, output, db_oid, query)
             }
-            _ => bail!(Error::UnsupportedOperation(stmt.to_string())),
+            _ => bail!(SQLError::Unsupported(stmt.to_string())),
         }
     }
 }

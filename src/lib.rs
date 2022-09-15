@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub mod access;
 pub mod catalog;
 pub mod engine;
-pub mod errors;
 pub mod lru;
 pub mod sql;
 pub mod storage;
