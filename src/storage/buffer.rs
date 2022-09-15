@@ -220,17 +220,13 @@ impl BufferPool {
     }
 
     fn new_free_buffer(&mut self) -> Result<Buffer> {
-        if self.page_table.len() >= self.page_table.capacity() {
-            debug!(
-                "Buffer pool is at full capacity {}",
-                self.page_table.capacity()
-            );
-            self.victim()
-        } else {
-            match self.free_list.pop() {
-                Some(buffer) => Ok(buffer),
-                None => bail!("Buffer pool is at full capacity"),
-            }
+        assert!(
+            self.page_table.len() < self.page_table.capacity(),
+            "Buffer pool exceeded the maximum capacity"
+        );
+        match self.free_list.pop() {
+            Some(buffer) => Ok(buffer),
+            None => self.victim(),
         }
     }
 
