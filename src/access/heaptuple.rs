@@ -3,7 +3,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{encode::Varlena, Datum, Datums};
+use crate::{sql::encode::Varlena, Datum, Datums};
 
 use super::tuple::TupleDesc;
 

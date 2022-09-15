@@ -1,9 +1,9 @@
 use std::io;
 
-use crate::commands::{
+use crate::errors::Error;
+use crate::sql::commands::{
     create::create_database, create::create_table, insert::insert_into, query::select,
 };
-use crate::errors::Error;
 use crate::storage::BufferPool;
 use crate::Oid;
 use anyhow::{bail, Result};

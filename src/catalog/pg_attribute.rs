@@ -1,6 +1,6 @@
 use crate::{
     access::tuple::TupleDesc,
-    encode::{varlena_deserializer, varlena_serializer},
+    sql::encode::{varlena_deserializer, varlena_serializer},
     storage::rel::{Relation, RelationData},
     Oid,
 };

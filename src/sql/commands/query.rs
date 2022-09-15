@@ -5,8 +5,8 @@ use std::io;
 use crate::{
     access::{heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
     catalog,
-    encode::decode,
     errors::Error,
+    sql::encode::decode,
     storage::{rel::RelationData, BufferPool},
     Oid, INVALID_OID,
 };
