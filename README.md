@@ -16,21 +16,26 @@ Tinydb is develop in Rust, so it's necessary to have the [Rust build toolchain i
 Once you have installed the Rust toolchanin, just clone the repository, build the binary and run.
 
 - `git clone https://github.com/msAlcantara/tinydb`
-- `cargo run`
-
-For now, tinydb is just a REPL, so `cargo run` will put it connected to the default database.
-
 
 ## Usage
-For now, tinydb only support creating table and inserting values with an int type:
+ For now, tinydb is just a REPL, so `cargo run` will put it connected to the default database.
 
-- `create table t (a int, b int, c int);`
-- `insert into t(a, b, c) values (10, 20, 30);`
-- `select * from t;`
+ The supported data types are INT, VARCHAR and BOOL
+
+```sql
+CREATE TABLE t(a int, b varchar, c boolean);
+
+INSERT INTO t(a, b, c) VALUES(123, 'tinydb', true);
+
+SELECT * FROM t;
+
+``` 
 
 ## Next steps
 - [ ] Make tinydb a client/server application
 - [ ] Add support for b+tree indexes
 - [ ] Add support for UPDATE
 - [ ] Add support for DELETE
-- [ ] Add support for basic data types such as string, float, booleans, etc
+- [ ] Planner
+- [ ] Executor
+- [ ] WAL
