@@ -1,5 +1,7 @@
 use std::cell::RefCell;
+use std::env;
 use std::io;
+use std::path::Path;
 use std::rc::Rc;
 
 use rustyline::error::ReadlineError;
@@ -10,6 +12,7 @@ use tinydb::initdb::init_database;
 use tinydb::storage::BufferPool;
 
 use structopt::StructOpt;
+use tinydb::storage::smgr::StorageManager;
 
 /// Command line arguments
 #[derive(StructOpt)]
@@ -24,8 +27,8 @@ struct Flags {
     init: bool,
 
     /// Path to store database files.
-    #[structopt(long = "db-path", default_value = "data")]
-    db_path: String,
+    #[structopt(long = "data-dir", default_value = "data")]
+    data_dir: String,
 
     /// Verbose mode (-v, -vv, -vvv, etc)
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
@@ -44,19 +47,25 @@ fn main() {
 
     let default_db_name = "tinydb";
 
-    let mut buffer = BufferPool::new(120);
+    let cwd = env::current_dir().expect("Failed to get current working directory");
+
+    let data_dir = cwd.join(&flags.data_dir);
+
+    let mut buffer = BufferPool::new(120, StorageManager::new(&data_dir));
 
     if flags.init {
-        init_database(&mut buffer, &"data").expect("Failed init default database");
+        init_database(&mut buffer, &data_dir).expect("Failed init default database");
     }
 
     let mut rl = Editor::<()>::new();
-    if rl.load_history("history.txt").is_err() {
+    if rl.load_history(&cwd.join("history.txt")).is_err() {
         println!("No previous history.");
     }
 
+    env::set_current_dir(Path::new(&flags.data_dir)).unwrap();
+
     let mut stdout = io::stdout();
-    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)), &flags.db_path);
+    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)));
 
     println!("Connected at {} database", default_db_name);
     loop {
@@ -83,5 +92,5 @@ fn main() {
             }
         }
     }
-    rl.save_history("history.txt").unwrap();
+    rl.save_history(&cwd.join("history.txt")).unwrap();
 }

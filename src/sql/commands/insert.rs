@@ -4,9 +4,8 @@ use anyhow::{bail, Result};
 use sqlparser::ast::{self, ObjectName};
 
 use crate::{
-    access::{heap::heap_insert, heaptuple::HeapTuple},
+    access::{self, heap::heap_insert, heaptuple::HeapTuple},
     catalog,
-    relation::RelationData,
     sql::{commands::SQLError, encode::encode},
     storage::BufferPool,
     Datums, Oid,
@@ -14,7 +13,6 @@ use crate::{
 
 pub fn insert_into(
     buffer_pool: Rc<RefCell<BufferPool>>,
-    db_data: &str,
     db_oid: &Oid,
     table_name: ObjectName,
     columns: Vec<ast::Ident>,
@@ -22,11 +20,10 @@ pub fn insert_into(
 ) -> Result<()> {
     let rel_name = table_name.0[0].to_string();
     let pg_class_rel =
-        catalog::get_pg_class_relation(&mut buffer_pool.borrow_mut(), db_data, db_oid, &rel_name)?;
+        catalog::get_pg_class_relation(&mut buffer_pool.borrow_mut(), db_oid, &rel_name)?;
 
-    let rel = RelationData::open(
+    let rel = access::open_relation(
         pg_class_rel.oid,
-        db_data,
         pg_class_rel.reltablespace,
         db_oid,
         &rel_name,
@@ -36,7 +33,6 @@ pub fn insert_into(
         ast::SetExpr::Values(values) => {
             let tuple_desc = catalog::tuple_desc_from_relation(
                 &mut buffer_pool.borrow_mut(),
-                db_data,
                 db_oid,
                 &rel_name,
             )?;

@@ -1,10 +1,9 @@
 use anyhow::{bail, Result};
-use std::path::Path;
 
 use crate::{
-    access::{heap::heap_iter, tuple::TupleDesc},
+    access::{self, heap::heap_iter, tuple::TupleDesc},
     new_object_id,
-    storage::BufferPool,
+    storage::{relation_locator::relation_path, BufferPool},
     Oid,
 };
 
@@ -17,18 +16,6 @@ pub mod pg_database;
 pub mod pg_tablespace;
 pub mod pg_type;
 
-/// Genereate a new relation oid that is unique within the database of the given db data.
-pub fn new_relation_oid(db_data: &str, db_oid: &Oid) -> Oid {
-    let dbpath = Path::new(db_data).join(db_oid.to_string());
-
-    loop {
-        let oid = new_object_id();
-        if !dbpath.join(oid.to_string()).exists() {
-            return oid;
-        }
-    }
-}
-
 /// Errors related with system catalog relation operations.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -39,13 +26,12 @@ pub enum Error {
 /// Return the tuple description of the given relation name.
 pub fn tuple_desc_from_relation(
     buffer_pool: &mut BufferPool,
-    db_data: &str,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<TupleDesc> {
-    let pg_attribute = PgAttribute::relation(db_data, db_oid);
+    let pg_attribute = access::open_pg_attribute_relation(db_oid);
 
-    let pg_class_rel = get_pg_class_relation(buffer_pool, db_data, db_oid, rel_name)?;
+    let pg_class_rel = get_pg_class_relation(buffer_pool, db_oid, rel_name)?;
 
     let mut attributes = Vec::new();
 
@@ -64,11 +50,10 @@ pub fn tuple_desc_from_relation(
 /// Return the oid of the given relation name.
 pub fn get_pg_class_relation(
     buffer_pool: &mut BufferPool,
-    db_data: &str,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<PgClass> {
-    let pg_class_rel = PgClass::relation(db_data, db_oid);
+    let pg_class_rel = access::open_pg_class_relation(db_oid);
 
     let mut pg_class_tuple = None;
 
@@ -86,5 +71,18 @@ pub fn get_pg_class_relation(
     match pg_class_tuple {
         Some(tuple) => Ok(tuple),
         None => bail!(Error::RelationNotFound(rel_name.to_string())),
+    }
+}
+
+/// Genereate a new relation oid that is unique to the given the database.
+///
+/// Note that the current working directory is expected to be the data directory.
+pub fn new_relation_oid(tablespace: &Oid, db_oid: &Oid) -> Result<Oid> {
+    loop {
+        let rel_oid = new_object_id();
+        let relpath = relation_path(tablespace, db_oid, &rel_oid)?;
+        if !relpath.exists() {
+            return Ok(rel_oid);
+        }
     }
 }

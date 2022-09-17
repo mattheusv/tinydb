@@ -1,12 +1,11 @@
 use crate::{
     access::tuple::TupleDesc,
-    relation::{Relation, RelationData},
     sql::encode::{varlena_deserializer, varlena_serializer},
     Oid,
 };
 use serde::{Deserialize, Serialize};
 
-use super::{pg_tablespace::DEFAULTTABLESPACE_OID, pg_type};
+use super::pg_type;
 
 /// Fixed oid of pg_attribute relation.
 pub const RELATION_OID: Oid = 1249;
@@ -36,17 +35,6 @@ pub struct PgAttribute {
 }
 
 impl PgAttribute {
-    /// Return the pg_attribute Relation.
-    pub fn relation(db_data: &str, db_oid: &Oid) -> Relation {
-        RelationData::open(
-            RELATION_OID,
-            db_data,
-            DEFAULTTABLESPACE_OID,
-            db_oid,
-            RELATION_NAME,
-        )
-    }
-
     /// Return the tuple description from pg_attribute system relation.
     pub fn tuple_desc() -> TupleDesc {
         TupleDesc {

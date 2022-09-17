@@ -3,9 +3,8 @@ use sqlparser::ast;
 use std::{cell::RefCell, io, rc::Rc};
 
 use crate::{
-    access::{heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
+    access::{self, heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
     catalog,
-    relation::RelationData,
     sql::{commands::SQLError, encode::decode},
     storage::BufferPool,
     Oid, INVALID_OID,
@@ -13,7 +12,6 @@ use crate::{
 
 pub fn select(
     buffer_pool: Rc<RefCell<BufferPool>>,
-    db_data: &str,
     output: &mut dyn io::Write,
     db_oid: &Oid,
     query: Box<ast::Query>,
@@ -26,21 +24,18 @@ pub fn select(
                         let rel_name = name.0[0].to_string();
                         let pg_class_rel = catalog::get_pg_class_relation(
                             &mut buffer_pool.borrow_mut(),
-                            db_data,
                             db_oid,
                             &rel_name,
                         )?;
 
                         let tuple_desc = catalog::tuple_desc_from_relation(
                             &mut buffer_pool.borrow_mut(),
-                            db_data,
                             db_oid,
                             &rel_name,
                         )?;
 
-                        let rel = RelationData::open(
+                        let rel = access::open_relation(
                             pg_class_rel.oid,
-                            db_data,
                             pg_class_rel.reltablespace,
                             if pg_class_rel.relisshared {
                                 &INVALID_OID

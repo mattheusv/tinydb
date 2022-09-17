@@ -1,6 +1,11 @@
 use std::{cell::RefCell, fs, io, path::Path, rc::Rc};
 
-use tinydb::{catalog::pg_database, engine::Engine, initdb::init_database, storage::BufferPool};
+use tinydb::{
+    catalog::pg_database,
+    engine::Engine,
+    initdb::init_database,
+    storage::{smgr::StorageManager, BufferPool},
+};
 
 #[test]
 fn test_regress() {
@@ -15,19 +20,14 @@ fn test_regress() {
     let expected_path = Path::new("tests").join("regress").join("expected");
     let output_path = Path::new("tests").join("regress").join("output");
 
-    // TODO: Make the buffer pool configurable via SQL.
-    let mut buffer = BufferPool::new(5);
-
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir to regress tests");
-    let db_data = temp_dir
-        .path()
-        .to_str()
-        .expect("Failed to convert temp dir to string")
-        .to_string();
+
+    // TODO: Make the buffer pool configurable via SQL.
+    let mut buffer = BufferPool::new(5, StorageManager::new(&temp_dir.path()));
 
     // Create a default tinydb database.
-    init_database(&mut buffer, &db_data).expect("Failed init default database");
-    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)), &db_data);
+    init_database(&mut buffer, &temp_dir.path()).expect("Failed init default database");
+    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)));
 
     for sql_file in sql_entries {
         let mut output = Vec::new();

@@ -1,6 +1,7 @@
 pub mod buffer;
 pub mod bufpage;
 pub mod freespace;
+pub mod relation_locator;
 pub mod smgr;
 
 pub use buffer::BufferPool;

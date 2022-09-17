@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fs, mem::size_of, path::Path, rc::Rc};
+use std::{cell::RefCell, fs, mem::size_of, rc::Rc};
 
 use anyhow::{bail, Result};
 use sqlparser::ast::{self, ColumnDef, DataType, ObjectName};
@@ -6,28 +6,25 @@ use sqlparser::ast::{self, ColumnDef, DataType, ObjectName};
 use crate::{
     access::tuple::TupleDesc,
     catalog::{
-        heap, new_relation_oid, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID,
-        pg_type,
+        self, heap, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID, pg_type,
     },
     storage::BufferPool,
     Oid,
 };
 
-pub fn create_database(db_data: &str, name: ObjectName) -> Result<()> {
-    let table_path = Path::new(db_data).join(name.0[0].to_string());
-    fs::create_dir(table_path)?;
+pub fn create_database(name: ObjectName) -> Result<()> {
+    fs::create_dir(name.0[0].to_string())?;
     Ok(())
 }
 
 pub fn create_table(
     buffer_pool: Rc<RefCell<BufferPool>>,
-    db_data: &str,
     db_oid: &Oid,
     name: ObjectName,
     columns: Vec<ast::ColumnDef>,
 ) -> Result<()> {
     // Create a new unique oid to the new heap relation.
-    let new_oid = new_relation_oid(db_data, db_oid);
+    let new_oid = catalog::new_relation_oid(&DEFAULTTABLESPACE_OID, db_oid)?;
 
     let mut tupledesc = TupleDesc::default();
     for (i, attr) in columns.iter().enumerate() {
@@ -39,7 +36,6 @@ pub fn create_table(
 
     heap::heap_create(
         &mut buffer_pool.borrow_mut(),
-        &db_data,
         DEFAULTTABLESPACE_OID,
         db_oid,
         &name.0[0].to_string(),

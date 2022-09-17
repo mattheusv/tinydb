@@ -1,18 +1,17 @@
 use crate::{
-    access::{heap::heap_insert, heaptuple::HeapTuple, tuple::TupleDesc},
-    relation::{Relation, RelationData},
+    access::{self, heap::heap_insert, heaptuple::HeapTuple, tuple::TupleDesc},
+    relation::Relation,
     storage::{bufpage::PageHeader, BufferPool, PAGE_SIZE},
     Oid,
 };
 use anyhow::Result;
 use log::debug;
 
-use super::{pg_attribute::PgAttribute, pg_class::PgClass, pg_tablespace::GLOBALTABLESPACE_OID};
+use super::{pg_class::PgClass, pg_tablespace::GLOBALTABLESPACE_OID};
 
 /// Create a new cataloged heap relation.
 pub fn heap_create(
     buffer: &mut BufferPool,
-    db_data: &str,
     tablespace: Oid,
     db_oid: &Oid,
     rel_name: &str,
@@ -20,13 +19,13 @@ pub fn heap_create(
     tupledesc: &TupleDesc,
 ) -> Result<()> {
     // Create a new relation object for the new heap relation.
-    let new_rel = RelationData::open(new_rel_oid, db_data, tablespace, db_oid, rel_name);
+    let new_rel = access::open_relation(new_rel_oid, tablespace, db_oid, rel_name);
 
     // Now add tuples to pg_attribute for the attributes in our new relation.
     add_new_attribute_tuples(buffer, &new_rel, &tupledesc)?;
 
     // Open pg_class relation to store the new relation
-    let pg_class = PgClass::relation(db_data, db_oid);
+    let pg_class = access::open_pg_class_relation(db_oid);
 
     // Now create an entry in pg_class for the relation.
     add_new_relation_tuple(buffer, &pg_class, &new_rel)?;
@@ -47,7 +46,7 @@ fn add_new_attribute_tuples(
     let rel = rel.borrow();
 
     // Open pg_attribute relation to store the new relation attributes.
-    let pg_attribute = PgAttribute::relation(&rel.locator.db_data, &rel.locator.database);
+    let pg_attribute = access::open_pg_attribute_relation(&rel.locator.database);
 
     // Now insert a new tuple on pg_attribute containing the new attributes information.
     for attr in &tupledesc.attrs {
@@ -72,7 +71,7 @@ fn add_new_relation_tuple(
     let new_rel = new_rel.borrow();
 
     // Initialize default page header of pg_class relation if needed.
-    if pg_class.borrow_mut().smgr()?.borrow().size()? == 0 {
+    if buffer.size_of_relation(pg_class)? == 0 {
         initialize_default_page_header(buffer, pg_class)?;
     }
 
@@ -94,7 +93,7 @@ fn add_new_relation_tuple(
 /// Initialize the default page header values on the given relation. The buffer pool is used to
 /// alloc a new page on relation.
 pub fn initialize_default_page_header(buffer: &mut BufferPool, rel: &Relation) -> Result<()> {
-    if rel.borrow_mut().smgr()?.borrow().size()? > 0 {
+    if buffer.size_of_relation(rel)? > 0 {
         // Page header already initialized.
         return Ok(());
     }

@@ -5,7 +5,7 @@ use log::debug;
 
 use crate::{lru::LRU, relation::Relation, Oid, INVALID_OID};
 
-use super::{PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
+use super::{smgr::StorageManager, PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
 
 pub type Page = Rc<RefCell<Bytes<PAGE_SIZE>>>;
 
@@ -88,6 +88,8 @@ impl BufferDesc {
 }
 
 pub struct BufferPool {
+    smgr: StorageManager,
+
     /// Replacer used to find a page that can be removed from memory.
     lru: LRU<Buffer>,
 
@@ -103,7 +105,7 @@ pub struct BufferPool {
 
 impl BufferPool {
     /// Create a new buffer pool with a given size.
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, smgr: StorageManager) -> Self {
         let mut free_list = Vec::with_capacity(size);
         let mut pages = Vec::with_capacity(size);
 
@@ -119,6 +121,7 @@ impl BufferPool {
         Self {
             free_list,
             pages,
+            smgr,
             lru: LRU::new(size),
             page_table: HashMap::with_capacity(size),
         }
@@ -163,8 +166,8 @@ impl BufferPool {
             }
 
             // Read page from disk and store inside buffer descriptor.
-            let smgr = rel.borrow_mut().smgr()?;
-            smgr.borrow_mut().read(
+            self.smgr.read(
+                rel,
                 page_num,
                 &mut new_buf_desc.borrow().page.borrow_mut().bytes_mut(),
             )?;
@@ -190,9 +193,11 @@ impl BufferPool {
         );
         let page = self.get_page(&buffer)?;
 
-        let smgr = buf_desc.relation()?.borrow_mut().smgr()?;
-        smgr.borrow_mut()
-            .write(buf_desc.tag.page_number, &page.borrow().bytes())?;
+        self.smgr.write(
+            &buf_desc.relation()?,
+            buf_desc.tag.page_number,
+            &page.borrow().bytes(),
+        )?;
 
         Ok(())
     }
@@ -209,8 +214,7 @@ impl BufferPool {
     ///
     /// Return error if no new pages could be created, otherwise the buffer.
     pub fn alloc_buffer(&mut self, rel: &Relation) -> Result<Buffer> {
-        let smgr = rel.borrow_mut().smgr()?;
-        let page_num = smgr.borrow_mut().extend()?;
+        let page_num = self.smgr.extend(rel)?;
         debug!(
             "New page {} allocated for relation {}",
             page_num,
@@ -298,11 +302,18 @@ impl BufferPool {
             );
             let page = self.get_page(&buffer)?;
 
-            let smgr = buf_desc.relation()?.borrow_mut().smgr()?;
-            smgr.borrow_mut()
-                .write(buf_desc.tag.page_number, &page.borrow().bytes())?;
+            self.smgr.write(
+                &buf_desc.relation()?,
+                buf_desc.tag.page_number,
+                &page.borrow().bytes(),
+            )?;
         }
         Ok(())
+    }
+
+    /// Return the number of pages of the given relation.
+    pub fn size_of_relation(&mut self, rel: &Relation) -> Result<u32> {
+        self.smgr.size(rel)
     }
 }
 

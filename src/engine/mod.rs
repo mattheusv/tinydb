@@ -17,7 +17,6 @@ const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
 pub struct Engine {
     buffer_pool: Rc<RefCell<BufferPool>>,
-    db_data: String,
 }
 
 impl Drop for Engine {
@@ -30,11 +29,8 @@ impl Drop for Engine {
 }
 
 impl Engine {
-    pub fn new(buffer_pool: Rc<RefCell<BufferPool>>, db_data: &str) -> Self {
-        Self {
-            buffer_pool,
-            db_data: db_data.to_string(),
-        }
+    pub fn new(buffer_pool: Rc<RefCell<BufferPool>>) -> Self {
+        Self { buffer_pool }
     }
 
     pub fn exec(&mut self, output: &mut dyn io::Write, command: &str, db_oid: &Oid) -> Result<()> {
@@ -54,14 +50,10 @@ impl Engine {
         stmt: Statement,
     ) -> Result<()> {
         match stmt {
-            Statement::CreateDatabase { db_name, .. } => create_database(&self.db_data, db_name),
-            Statement::CreateTable { name, columns, .. } => create_table(
-                self.buffer_pool.clone(),
-                &self.db_data,
-                db_oid,
-                name,
-                columns,
-            ),
+            Statement::CreateDatabase { db_name, .. } => create_database(db_name),
+            Statement::CreateTable { name, columns, .. } => {
+                create_table(self.buffer_pool.clone(), db_oid, name, columns)
+            }
             Statement::Insert {
                 table_name,
                 columns,
@@ -69,19 +61,12 @@ impl Engine {
                 ..
             } => insert_into(
                 self.buffer_pool.clone(),
-                &self.db_data,
                 db_oid,
                 table_name,
                 columns,
                 source,
             ),
-            Statement::Query(query) => select(
-                self.buffer_pool.clone(),
-                &self.db_data,
-                output,
-                db_oid,
-                query,
-            ),
+            Statement::Query(query) => select(self.buffer_pool.clone(), output, db_oid, query),
             _ => bail!(SQLError::Unsupported(stmt.to_string())),
         }
     }
