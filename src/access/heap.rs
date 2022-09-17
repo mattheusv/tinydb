@@ -1,8 +1,9 @@
-use crate::storage::{
-    bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
-    freespace,
-    rel::Relation,
-    BufferPool,
+use crate::{
+    relation::Relation,
+    storage::{
+        bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
+        freespace, BufferPool,
+    },
 };
 use anyhow::Result;
 

@@ -2,7 +2,7 @@ mod disk;
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::storage::{rel::RelationLocator, smgr::disk::Disk};
+use crate::{relation::locator::RelationLocator, storage::smgr::disk::Disk};
 
 use anyhow::Result;
 

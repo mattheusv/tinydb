@@ -3,9 +3,9 @@ use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 use anyhow::{bail, Result};
 use log::debug;
 
-use crate::{lru::LRU, Oid, INVALID_OID};
+use crate::{lru::LRU, relation::Relation, Oid, INVALID_OID};
 
-use super::{rel::Relation, PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
+use super::{PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
 
 pub type Page = Rc<RefCell<Bytes<PAGE_SIZE>>>;
 

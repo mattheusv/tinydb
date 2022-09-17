@@ -5,8 +5,9 @@ use std::{cell::RefCell, io, rc::Rc};
 use crate::{
     access::{heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
     catalog,
+    relation::RelationData,
     sql::{commands::SQLError, encode::decode},
-    storage::{rel::RelationData, BufferPool},
+    storage::BufferPool,
     Oid, INVALID_OID,
 };
 

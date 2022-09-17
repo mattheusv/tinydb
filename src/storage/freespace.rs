@@ -1,6 +1,8 @@
 use anyhow::Result;
 
-use super::{buffer::Buffer, rel::Relation, BufferPool};
+use crate::relation::Relation;
+
+use super::{buffer::Buffer, BufferPool};
 
 /// Try to find a page in the given relation with at least the specified amount of free space.
 ///

@@ -7,6 +7,7 @@ pub mod access;
 pub mod catalog;
 pub mod engine;
 pub mod lru;
+pub mod relation;
 pub mod sql;
 pub mod storage;
 

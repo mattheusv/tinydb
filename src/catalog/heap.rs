@@ -1,10 +1,7 @@
 use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple, tuple::TupleDesc},
-    storage::{
-        bufpage::PageHeader,
-        rel::{Relation, RelationData},
-        BufferPool, PAGE_SIZE,
-    },
+    relation::{Relation, RelationData},
+    storage::{bufpage::PageHeader, BufferPool, PAGE_SIZE},
     Oid,
 };
 use anyhow::Result;

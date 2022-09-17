@@ -6,8 +6,9 @@ use sqlparser::ast::{self, ObjectName};
 use crate::{
     access::{heap::heap_insert, heaptuple::HeapTuple},
     catalog,
+    relation::RelationData,
     sql::{commands::SQLError, encode::encode},
-    storage::{rel::RelationData, BufferPool},
+    storage::BufferPool,
     Datums, Oid,
 };
 
