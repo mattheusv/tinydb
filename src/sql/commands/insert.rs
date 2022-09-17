@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use anyhow::{bail, Result};
 use sqlparser::ast::{self, ObjectName};
 
@@ -10,7 +12,7 @@ use crate::{
 };
 
 pub fn insert_into(
-    buffer_pool: &mut BufferPool,
+    buffer_pool: Rc<RefCell<BufferPool>>,
     db_data: &str,
     db_oid: &Oid,
     table_name: ObjectName,
@@ -18,7 +20,8 @@ pub fn insert_into(
     source: Box<ast::Query>,
 ) -> Result<()> {
     let rel_name = table_name.0[0].to_string();
-    let pg_class_rel = catalog::get_pg_class_relation(buffer_pool, db_data, db_oid, &rel_name)?;
+    let pg_class_rel =
+        catalog::get_pg_class_relation(&mut buffer_pool.borrow_mut(), db_data, db_oid, &rel_name)?;
 
     let rel = RelationData::open(
         pg_class_rel.oid,
@@ -30,8 +33,12 @@ pub fn insert_into(
 
     match source.body {
         ast::SetExpr::Values(values) => {
-            let tuple_desc =
-                catalog::tuple_desc_from_relation(buffer_pool, db_data, db_oid, &rel_name)?;
+            let tuple_desc = catalog::tuple_desc_from_relation(
+                &mut buffer_pool.borrow_mut(),
+                db_data,
+                db_oid,
+                &rel_name,
+            )?;
 
             let mut heap_values = Datums::default();
 
@@ -65,7 +72,7 @@ pub fn insert_into(
             }
 
             heap_insert(
-                buffer_pool,
+                &mut buffer_pool.borrow_mut(),
                 &rel,
                 &mut HeapTuple::from_datums(heap_values, &tuple_desc)?,
             )?;

@@ -1,4 +1,4 @@
-use std::{fs, mem::size_of, path::Path};
+use std::{cell::RefCell, fs, mem::size_of, path::Path, rc::Rc};
 
 use anyhow::{bail, Result};
 use sqlparser::ast::{self, ColumnDef, DataType, ObjectName};
@@ -20,7 +20,7 @@ pub fn create_database(db_data: &str, name: ObjectName) -> Result<()> {
 }
 
 pub fn create_table(
-    buffer_pool: &mut BufferPool,
+    buffer_pool: Rc<RefCell<BufferPool>>,
     db_data: &str,
     db_oid: &Oid,
     name: ObjectName,
@@ -38,7 +38,7 @@ pub fn create_table(
     }
 
     heap::heap_create(
-        buffer_pool,
+        &mut buffer_pool.borrow_mut(),
         &db_data,
         DEFAULTTABLESPACE_OID,
         db_oid,

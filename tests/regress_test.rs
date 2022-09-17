@@ -1,4 +1,4 @@
-use std::{fs, io, path::Path};
+use std::{cell::RefCell, fs, io, path::Path, rc::Rc};
 
 use tinydb::{catalog::pg_database, engine::Engine, initdb::init_database, storage::BufferPool};
 
@@ -27,7 +27,7 @@ fn test_regress() {
 
     // Create a default tinydb database.
     init_database(&mut buffer, &db_data).expect("Failed init default database");
-    let mut engine = Engine::new(buffer, &db_data);
+    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)), &db_data);
 
     for sql_file in sql_entries {
         let mut output = Vec::new();

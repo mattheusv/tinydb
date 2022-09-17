@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::io;
+use std::rc::Rc;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -54,7 +56,7 @@ fn main() {
     }
 
     let mut stdout = io::stdout();
-    let mut engine = Engine::new(buffer, &flags.db_path);
+    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)), &flags.db_path);
 
     println!("Connected at {} database", default_db_name);
     loop {

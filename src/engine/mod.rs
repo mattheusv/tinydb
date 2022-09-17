@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::io;
+use std::rc::Rc;
 
 use crate::sql::commands::SQLError;
 use crate::sql::commands::{
@@ -14,20 +16,21 @@ use sqlparser::parser::Parser;
 const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
 pub struct Engine {
-    buffer_pool: BufferPool,
+    buffer_pool: Rc<RefCell<BufferPool>>,
     db_data: String,
 }
 
 impl Drop for Engine {
     fn drop(&mut self) {
         self.buffer_pool
+            .borrow_mut()
             .flush_all_buffers()
             .expect("failed to flush all buffers to disk");
     }
 }
 
 impl Engine {
-    pub fn new(buffer_pool: BufferPool, db_data: &str) -> Self {
+    pub fn new(buffer_pool: Rc<RefCell<BufferPool>>, db_data: &str) -> Self {
         Self {
             buffer_pool,
             db_data: db_data.to_string(),
@@ -52,25 +55,33 @@ impl Engine {
     ) -> Result<()> {
         match stmt {
             Statement::CreateDatabase { db_name, .. } => create_database(&self.db_data, db_name),
-            Statement::CreateTable { name, columns, .. } => {
-                create_table(&mut self.buffer_pool, &self.db_data, db_oid, name, columns)
-            }
+            Statement::CreateTable { name, columns, .. } => create_table(
+                self.buffer_pool.clone(),
+                &self.db_data,
+                db_oid,
+                name,
+                columns,
+            ),
             Statement::Insert {
                 table_name,
                 columns,
                 source,
                 ..
             } => insert_into(
-                &mut self.buffer_pool,
+                self.buffer_pool.clone(),
                 &self.db_data,
                 db_oid,
                 table_name,
                 columns,
                 source,
             ),
-            Statement::Query(query) => {
-                select(&mut self.buffer_pool, &self.db_data, output, db_oid, query)
-            }
+            Statement::Query(query) => select(
+                self.buffer_pool.clone(),
+                &self.db_data,
+                output,
+                db_oid,
+                query,
+            ),
             _ => bail!(SQLError::Unsupported(stmt.to_string())),
         }
     }

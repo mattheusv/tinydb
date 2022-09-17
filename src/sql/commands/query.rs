@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use sqlparser::ast;
-use std::io;
+use std::{cell::RefCell, io, rc::Rc};
 
 use crate::{
     access::{heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn select(
-    buffer_pool: &mut BufferPool,
+    buffer_pool: Rc<RefCell<BufferPool>>,
     db_data: &str,
     output: &mut dyn io::Write,
     db_oid: &Oid,
@@ -24,14 +24,14 @@ pub fn select(
                     ast::TableFactor::Table { name, .. } => {
                         let rel_name = name.0[0].to_string();
                         let pg_class_rel = catalog::get_pg_class_relation(
-                            buffer_pool,
+                            &mut buffer_pool.borrow_mut(),
                             db_data,
                             db_oid,
                             &rel_name,
                         )?;
 
                         let tuple_desc = catalog::tuple_desc_from_relation(
-                            buffer_pool,
+                            &mut buffer_pool.borrow_mut(),
                             db_data,
                             db_oid,
                             &rel_name,
@@ -48,7 +48,7 @@ pub fn select(
                             },
                             &rel_name,
                         );
-                        let tuples = heap_scan(buffer_pool, &rel)?;
+                        let tuples = heap_scan(&mut buffer_pool.borrow_mut(), &rel)?;
                         print_relation_tuples(output, tuples, &tuple_desc)?;
                     }
                     _ => bail!(SQLError::Unsupported(table.relation.to_string())),
