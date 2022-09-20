@@ -9,6 +9,7 @@ insert into t2(a, b, c) values(1, 'abc', 2);
 insert into t2(b) values('def');
 insert into t2(a) values(3);
 insert into t2(c) values(4);
+insert into t2(b, c, a) values('inverse column order', 70, 42);
 select * from t2;
 
 create table t3(a boolean, b boolean);

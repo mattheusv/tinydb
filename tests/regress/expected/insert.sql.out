@@ -25,13 +25,16 @@ insert into t2(a) values(3);
 
 insert into t2(c) values(4);
 
+insert into t2(b, c, a) values('inverse column order', 70, 42);
+
 select * from t2;
-  a   |  b   |  c   
-------+------+------
-  1   | abc  |  2   
- NULL | def  | NULL 
-  3   | NULL | NULL 
- NULL | NULL |  4   
+  a   |          b           |  c   
+------+----------------------+------
+  1   |         abc          |  2   
+ NULL |         def          | NULL 
+  3   |         NULL         | NULL 
+ NULL |         NULL         |  4   
+  42  | inverse column order |  70  
 
 
 
