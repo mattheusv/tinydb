@@ -1,5 +1,9 @@
 use crate::{
-    access::{self, heap::heap_insert, heaptuple::HeapTuple, tuple::TupleDesc},
+    access::{
+        self,
+        heap::heap_insert,
+        heaptuple::{HeapTuple, TupleDesc},
+    },
     relation::Relation,
     storage::{bufpage::PageHeader, BufferPool, PAGE_SIZE},
     Oid,

@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 
 use crate::{
-    access::{self, heap::heap_iter, tuple::TupleDesc},
+    access::{self, heap::heap_iter, heaptuple::TupleDesc},
     new_object_id,
     storage::{relation_locator::relation_path, BufferPool},
     Oid,

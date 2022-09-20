@@ -3,9 +3,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{sql::encode::Varlena, Datum, Datums};
-
-use super::tuple::TupleDesc;
+use crate::{catalog::pg_attribute::PgAttribute, sql::encode::Varlena, Datum, Datums};
 
 /// Represents the size of a heap header tuple.
 pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeaderFields>();
@@ -15,6 +13,18 @@ const HEAP_HASNULL: u16 = 0x0001;
 
 /// Bit flag stored on t_infomask informing if a tuple has variable-width attribute(s).
 const HEAP_HASVARWIDTH: u16 = 0x0002;
+
+/// Describe the structure of tuples. Basically it holds the columns of tables.
+pub struct TupleDesc {
+    /// Columns of table.
+    pub attrs: Vec<PgAttribute>,
+}
+
+impl Default for TupleDesc {
+    fn default() -> Self {
+        Self { attrs: Vec::new() }
+    }
+}
 
 /// Hold all fields that is writen on heap tuple header section on disk.
 #[derive(Serialize, Deserialize, Debug)]

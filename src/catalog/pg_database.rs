@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    access::tuple::TupleDesc,
+    access::heaptuple::TupleDesc,
     sql::encode::{varlena_deserializer, varlena_serializer},
     Oid,
 };

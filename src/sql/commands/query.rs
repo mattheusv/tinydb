@@ -3,7 +3,11 @@ use sqlparser::ast;
 use std::{cell::RefCell, io, rc::Rc};
 
 use crate::{
-    access::{self, heap::heap_scan, heaptuple::HeapTuple, tuple::TupleDesc},
+    access::{
+        self,
+        heap::heap_scan,
+        heaptuple::{HeapTuple, TupleDesc},
+    },
     catalog,
     sql::{commands::SQLError, encode::decode},
     storage::BufferPool,

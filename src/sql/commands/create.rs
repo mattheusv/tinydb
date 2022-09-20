@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use sqlparser::ast::{self, ColumnDef, DataType, ObjectName};
 
 use crate::{
-    access::tuple::TupleDesc,
+    access::heaptuple::TupleDesc,
     catalog::{
         self, heap, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID, pg_type,
     },
