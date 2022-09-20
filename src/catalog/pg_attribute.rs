@@ -24,7 +24,7 @@ pub struct PgAttribute {
     #[serde(serialize_with = "varlena_serializer")]
     pub attname: String,
 
-    /// The number of the column.
+    /// The number of the column (start at 1).
     pub attnum: usize,
 
     /// The number of bytes in the internal representation of the type.

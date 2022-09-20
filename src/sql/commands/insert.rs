@@ -41,28 +41,43 @@ pub fn insert_into(
 
             // Iterate over all rows on insert to write new tuples.
             for row in &values.0 {
-                if row.len() != columns.len() {
-                    bail!("INSERT has more expressions than target columns");
-                }
-
-                // Iterate over relation attrs and try to find the value that is being inserted
-                // for each attr. If the value does not exists a NULL value should be inserted
-                // on tuple header t_bits array.
-                for attr in &tuple_desc.attrs {
-                    // TODO: Find a better way to lookup the attr value that is being inserted
-                    let index = columns.iter().position(|ident| ident.value == attr.attname);
-                    match index {
-                        Some(index) => {
-                            let value = &row[index];
-                            match value {
+                // INSERT statement don't specify the columns
+                if columns.len() == 0 {
+                    for attr in &tuple_desc.attrs {
+                        match row.get(attr.attnum - 1) {
+                            Some(value) => match value {
                                 ast::Expr::Value(value) => {
                                     encode(&mut heap_values, &value, attr)?;
                                 }
                                 _ => bail!(SQLError::Unsupported(value.to_string())),
-                            }
+                            },
+                            None => heap_values.push(None),
                         }
-                        None => {
-                            heap_values.push(None);
+                    }
+                } else {
+                    if row.len() != columns.len() {
+                        bail!("INSERT has more expressions than target columns");
+                    }
+
+                    // Iterate over relation attrs and try to find the value that is being inserted
+                    // for each attr. If the value does not exists a NULL value should be inserted
+                    // on tuple header t_bits array.
+                    for attr in &tuple_desc.attrs {
+                        // TODO: Find a better way to lookup the attr value that is being inserted
+                        let index = columns.iter().position(|ident| ident.value == attr.attname);
+                        match index {
+                            Some(index) => {
+                                let value = &row[index];
+                                match value {
+                                    ast::Expr::Value(value) => {
+                                        encode(&mut heap_values, &value, attr)?;
+                                    }
+                                    _ => bail!(SQLError::Unsupported(value.to_string())),
+                                }
+                            }
+                            None => {
+                                heap_values.push(None);
+                            }
                         }
                     }
                 }
