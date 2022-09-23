@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub mod access;
 pub mod catalog;
 pub mod engine;
+pub mod executor;
 pub mod lru;
+pub mod planner;
 pub mod relation;
 pub mod sql;
 pub mod storage;
@@ -34,9 +36,9 @@ pub fn new_object_id() -> Oid {
     OID_COUNTER.fetch_add(1, Ordering::SeqCst)
 }
 
-/// A slice of nullable Datums.
+/// An array of nullable Datums.
 ///
-/// This splice represents a single tuple row with all posible values.
+/// This array represents a single tuple row with all posible values.
 ///
 /// The values are aligned with the same index of tuple attributes. If the
 /// attribute index is represents by an None it means that this attribute

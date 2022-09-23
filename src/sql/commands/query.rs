@@ -1,17 +1,14 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use sqlparser::ast;
 use std::{cell::RefCell, io, rc::Rc};
 
 use crate::{
-    access::{
-        self,
-        heap::heap_scan,
-        heaptuple::{HeapTuple, TupleDesc},
-    },
-    catalog,
-    sql::{commands::SQLError, encode::decode},
+    access::heaptuple::{HeapTuple, TupleDesc},
+    executor::Executor,
+    planner::Plan,
+    sql::encode::decode,
     storage::BufferPool,
-    Oid, INVALID_OID,
+    Oid,
 };
 
 pub fn select(
@@ -20,43 +17,10 @@ pub fn select(
     db_oid: &Oid,
     query: Box<ast::Query>,
 ) -> Result<()> {
-    match query.body {
-        ast::SetExpr::Select(select) => {
-            for table in select.from {
-                match table.relation {
-                    ast::TableFactor::Table { name, .. } => {
-                        let rel_name = name.0[0].to_string();
-                        let pg_class_rel = catalog::get_pg_class_relation(
-                            &mut buffer_pool.borrow_mut(),
-                            db_oid,
-                            &rel_name,
-                        )?;
-
-                        let tuple_desc = catalog::tuple_desc_from_relation(
-                            &mut buffer_pool.borrow_mut(),
-                            db_oid,
-                            &rel_name,
-                        )?;
-
-                        let rel = access::open_relation(
-                            pg_class_rel.oid,
-                            pg_class_rel.reltablespace,
-                            if pg_class_rel.relisshared {
-                                &INVALID_OID
-                            } else {
-                                db_oid
-                            },
-                            &rel_name,
-                        );
-                        let tuples = heap_scan(&mut buffer_pool.borrow_mut(), &rel)?;
-                        print_relation_tuples(output, tuples, &tuple_desc)?;
-                    }
-                    _ => bail!(SQLError::Unsupported(table.relation.to_string())),
-                }
-            }
-        }
-        _ => bail!(SQLError::Unsupported(query.body.to_string())),
-    }
+    let plan = Plan::create(buffer_pool.clone(), db_oid, query)?;
+    let executor = Executor::new(buffer_pool.clone());
+    let tuple_table = executor.exec(&plan)?;
+    print_relation_tuples(output, tuple_table.tuples, &tuple_table.tuple_desc)?;
     Ok(())
 }
 
