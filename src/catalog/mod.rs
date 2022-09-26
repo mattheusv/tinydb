@@ -47,7 +47,7 @@ pub fn tuple_desc_from_relation(
     Ok(TupleDesc { attrs: attributes })
 }
 
-/// Return the oid of the given relation name.
+/// Return the pg class tuple from the given relation name.
 pub fn get_pg_class_relation(
     buffer_pool: &mut BufferPool,
     db_oid: &Oid,

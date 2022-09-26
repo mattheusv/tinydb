@@ -1,3 +1,5 @@
+use std::io::{Cursor, Read};
+
 use crate::{
     relation::Relation,
     storage::{
@@ -43,28 +45,28 @@ where
 
     let page_data = page.borrow().bytes();
 
-    // Get a reference to the raw data of item_id_data .
+    // Get a reference to the raw data of item_id_data.
     let item_id_data = &page_data[PAGE_HEADER_SIZE..page_header.start_free_space as usize];
 
-    // Split the raw item_id_data to a list of ItemId.
-    let item_id_data = item_id_data.chunks(ITEM_ID_SIZE);
+    let mut item_id_data_cursor = Cursor::new(item_id_data);
+    let mut item_id_data = vec![0; ITEM_ID_SIZE];
+    loop {
+        let size = item_id_data_cursor.read(&mut item_id_data)?;
+        if size == 0 {
+            // EOF
+            break;
+        }
 
-    for data in item_id_data {
-        assert_eq!(
-            data.len(),
-            ITEM_ID_SIZE,
-            "Invalid size of heap tuple item: expected {}; got {}",
-            ITEM_ID_SIZE,
-            data.len()
-        );
         // Deserialize a single ItemId from the list item_id_data.
-        let item_id = bincode::deserialize::<ItemId>(&data.to_vec())?;
+        let item_id = bincode::deserialize::<ItemId>(&item_id_data)?;
 
         // Slice the raw page to get a refenrece to a tuple inside the page.
         let data = &page_data[item_id.offset as usize..(item_id.offset + item_id.length) as usize];
         let tuple = HeapTuple::decode(data)?;
 
         f(tuple)?;
+
+        item_id_data = vec![0; ITEM_ID_SIZE];
     }
 
     buffer_pool.unpin_buffer(buffer, false)?;
