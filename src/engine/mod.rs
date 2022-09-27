@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
 
+use crate::sql::commands::explain::explain;
 use crate::sql::commands::SQLError;
 use crate::sql::commands::{
     create::create_database, create::create_table, insert::insert_into, query::select,
@@ -67,6 +68,9 @@ impl Engine {
                 source,
             ),
             Statement::Query(query) => select(self.buffer_pool.clone(), output, db_oid, query),
+            Statement::Explain { statement, .. } => {
+                explain(self.buffer_pool.clone(), output, db_oid, *statement)
+            }
             _ => bail!(SQLError::Unsupported(stmt.to_string())),
         }
     }

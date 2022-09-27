@@ -1,4 +1,5 @@
 pub mod create;
+pub mod explain;
 pub mod insert;
 pub mod query;
 

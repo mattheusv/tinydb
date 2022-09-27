@@ -77,7 +77,6 @@ fn main() {
                     eprintln!("Error: {:?}", err);
                     continue;
                 }
-                println!("Ok");
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
