@@ -371,6 +371,11 @@ impl Bytes {
         &mut self.page
     }
 
+    /// Return a slice of page on the given range.
+    pub fn slice(&self, start: usize, end: usize) -> &[u8] {
+        &self.page[start..end]
+    }
+
     /// Resets the buffer to be empty, but it retains the underlying storage for use by future writes.
     pub fn reset(&mut self) {
         self.page = [0; PAGE_SIZE];

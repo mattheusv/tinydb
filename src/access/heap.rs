@@ -44,10 +44,10 @@ where
     let page = buffer_pool.get_page(&buffer)?;
     let page_header = PageHeader::new(&page)?;
 
-    let page_data = page.borrow().bytes();
+    let page = page.borrow();
 
     // Get a reference to the raw data of item_id_data.
-    let item_id_data = &page_data[PAGE_HEADER_SIZE..page_header.start_free_space as usize];
+    let item_id_data = &page.slice(PAGE_HEADER_SIZE, page_header.start_free_space as usize);
 
     let mut item_id_data_cursor = Cursor::new(item_id_data);
     let mut item_id_data = vec![0; ITEM_ID_SIZE];
@@ -62,7 +62,10 @@ where
         let item_id = bincode::deserialize::<ItemId>(&item_id_data)?;
 
         // Slice the raw page to get a refenrece to a tuple inside the page.
-        let data = &page_data[item_id.offset as usize..(item_id.offset + item_id.length) as usize];
+        let data = page.slice(
+            item_id.offset as usize,
+            (item_id.offset + item_id.length) as usize,
+        );
         let tuple = HeapTuple::decode(data)?;
 
         f(tuple)?;

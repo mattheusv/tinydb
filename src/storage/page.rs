@@ -22,7 +22,7 @@ pub struct PageHeader {
 impl PageHeader {
     /// Deserializa the page header for the given raw page data.
     pub fn new(page: &MemPage) -> Result<Self, bincode::Error> {
-        bincode::deserialize::<PageHeader>(&page.borrow().bytes()[0..PAGE_HEADER_SIZE])
+        bincode::deserialize::<PageHeader>(&page.borrow().slice(0, PAGE_HEADER_SIZE))
     }
 }
 
