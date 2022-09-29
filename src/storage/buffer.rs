@@ -5,12 +5,12 @@ use log::debug;
 
 use crate::{lru::LRU, relation::Relation, Oid, INVALID_OID};
 
-use super::{smgr::StorageManager, PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
+use super::{smgr::StorageManager, Page, PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
 
 /// A mutable reference to a page.
 ///
 /// It mostly used by buffer pool and access methods.
-pub type MemPage = Rc<RefCell<Bytes<PAGE_SIZE>>>;
+pub type MemPage = Rc<RefCell<Bytes>>;
 
 /// Buffer identifiers.
 ///
@@ -322,24 +322,21 @@ impl BufferPool {
 
 /// Bytes is a wrapper over a byte array that makes it easy to write, overwrite and reset that byte array.
 #[derive(PartialEq, Debug)]
-pub struct Bytes<const N: usize> {
-    data: [u8; N],
+pub struct Bytes {
+    page: Page,
 }
 
-impl<const N: usize> Bytes<{ N }> {
+impl Bytes {
     /// Create a new empty bytes buffer.
     pub fn new() -> Self {
-        Self::from_bytes([0; N])
-    }
-
-    /// Create a new bytes buffer from a current array of bytes.
-    pub fn from_bytes(data: [u8; N]) -> Self {
-        Self { data }
+        Self {
+            page: [0; PAGE_SIZE],
+        }
     }
 
     /// Override the current bytes from buffer to the incoming data.
-    pub fn write(&mut self, data: [u8; N]) {
-        self.data = data;
+    pub fn write(&mut self, data: [u8; PAGE_SIZE]) {
+        self.page = data;
     }
 
     /// Write at bytes buffer from a vec. Panic if data.len() > N.
@@ -350,38 +347,42 @@ impl<const N: usize> Bytes<{ N }> {
     /// Write the comming data overrinding the bytes buffer starting at the given offset.
     pub fn write_at(&mut self, data: &Vec<u8>, offset: usize) {
         assert!(
-            data.len() <= self.data.len() + offset,
+            data.len() <= self.page.len() + offset,
             "Data overflow the current buffer size"
         );
 
         let mut idx_outer = 0;
-        for idx in offset..self.data.len() {
+        for idx in offset..self.page.len() {
             if idx_outer >= data.len() {
                 break;
             }
-            self.data[idx] = data[idx_outer];
+            self.page[idx] = data[idx_outer];
             idx_outer += 1;
         }
     }
 
     /// Return the current bytes inside buffer.
-    pub fn bytes(&self) -> [u8; N] {
-        self.data
+    pub fn bytes(&self) -> [u8; PAGE_SIZE] {
+        self.page
     }
 
     /// Return a mutable reference to override.
-    pub fn bytes_mut(&mut self) -> &mut [u8; N] {
-        &mut self.data
+    pub fn bytes_mut(&mut self) -> &mut [u8; PAGE_SIZE] {
+        &mut self.page
     }
 
     /// Resets the buffer to be empty, but it retains the underlying storage for use by future writes.
     pub fn reset(&mut self) {
-        self.data = [0; N];
+        self.page = [0; PAGE_SIZE];
     }
 
-    fn vec_to_array<T>(&self, v: Vec<T>) -> [T; N] {
+    fn vec_to_array<T>(&self, v: Vec<T>) -> [T; PAGE_SIZE] {
         v.try_into().unwrap_or_else(|v: Vec<T>| {
-            panic!("Expected a Vec of length {} but it was {}", N, v.len())
+            panic!(
+                "Expected a Vec of length {} but it was {}",
+                PAGE_SIZE,
+                v.len()
+            )
         })
     }
 }

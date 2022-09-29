@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn test_page_add_item() -> Result<(), bincode::Error> {
         // Create a new empty page with the default header values.
-        let page = Rc::new(RefCell::new(Bytes::<PAGE_SIZE>::new()));
+        let page = Rc::new(RefCell::new(Bytes::new()));
         page.borrow_mut()
             .write_at(&bincode::serialize(&PageHeader::default())?, 0);
 
