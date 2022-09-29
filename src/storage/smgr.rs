@@ -10,7 +10,7 @@ use anyhow::Result;
 use super::disk::Disk;
 use super::{
     relation_locator::{relation_path, RelationLocator},
-    MemPage, PageNumber,
+    Page, PageNumber,
 };
 
 /// A SMgrRelationData is used as StorageManager entry key to store a physical disk page handler of
@@ -60,19 +60,14 @@ impl StorageManager {
     }
 
     /// Write the supplied page at the appropriate location.
-    pub fn write(&mut self, rel: &Relation, page_number: PageNumber, page: &MemPage) -> Result<()> {
+    pub fn write(&mut self, rel: &Relation, page_number: PageNumber, page: &Page) -> Result<()> {
         let disk = self.smgr_from_relation(rel)?;
         let mut disk = disk.borrow_mut();
         disk.write_page(page_number, page)
     }
 
     /// Read the specified block from the storage manager relation.
-    pub fn read(
-        &mut self,
-        rel: &Relation,
-        page_number: PageNumber,
-        page: &mut MemPage,
-    ) -> Result<()> {
+    pub fn read(&mut self, rel: &Relation, page_number: PageNumber, page: &mut Page) -> Result<()> {
         let disk = self.smgr_from_relation(rel)?;
         let mut disk = disk.borrow_mut();
         disk.read_page(page_number, page)

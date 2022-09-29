@@ -7,7 +7,10 @@ use crate::{lru::LRU, relation::Relation, Oid, INVALID_OID};
 
 use super::{smgr::StorageManager, PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
 
-pub type Page = Rc<RefCell<Bytes<PAGE_SIZE>>>;
+/// A mutable reference to a page.
+///
+/// It mostly used by buffer pool and access methods.
+pub type MemPage = Rc<RefCell<Bytes<PAGE_SIZE>>>;
 
 /// Buffer identifiers.
 ///
@@ -64,7 +67,7 @@ struct BufferDesc {
     rel: Option<Relation>,
 
     /// Raw page from buffer.
-    page: Page,
+    page: MemPage,
 }
 
 impl BufferDesc {
@@ -203,7 +206,7 @@ impl BufferPool {
     }
 
     /// Return the page contents from a buffer.
-    pub fn get_page(&self, buffer: &Buffer) -> Result<Page> {
+    pub fn get_page(&self, buffer: &Buffer) -> Result<MemPage> {
         Ok(self.get_buffer_descriptor(*buffer)?.borrow().page.clone())
     }
 

@@ -9,7 +9,7 @@ use std::io::{
 };
 use std::path::Path;
 
-use crate::storage::{MemPage, PageNumber, PAGE_SIZE};
+use crate::storage::{Page, PageNumber, PAGE_SIZE};
 
 /// Represents the tinydb header size.
 const HEADER_SIZE: usize = 100;
@@ -129,7 +129,7 @@ impl Disk {
     /// Reads a page from the disk, and updates the in-memory MemPage struct passed on
     /// page arg. Any changes done to a MemPage will not be effective until call the
     /// [write_page](Disk::write_page] with that MemPage.
-    pub fn read_page(&mut self, page_number: PageNumber, page: &mut MemPage) -> Result<()> {
+    pub fn read_page(&mut self, page_number: PageNumber, page: &mut Page) -> Result<()> {
         self.validate_page(page_number)?;
         self.file.seek(SeekFrom::Start(self.offset(page_number)))?;
         let count = self.file.read(page)?;
@@ -140,7 +140,7 @@ impl Disk {
     /// Write a page to file.
     ///
     /// Writes the in-memory copy of a page (stored in a MemPage struct) back to disk.
-    pub fn write_page(&mut self, number: PageNumber, page: &MemPage) -> Result<()> {
+    pub fn write_page(&mut self, number: PageNumber, page: &Page) -> Result<()> {
         self.validate_page(number)?;
         self.file.seek(SeekFrom::Start(self.offset(number)))?;
         let count = self.file.write(page)?;
