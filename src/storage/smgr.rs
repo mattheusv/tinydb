@@ -1,5 +1,3 @@
-mod disk;
-
 use std::env;
 
 use std::path::Path;
@@ -9,8 +7,7 @@ use crate::relation::Relation;
 
 use anyhow::Result;
 
-use self::disk::Disk;
-
+use super::disk::Disk;
 use super::{
     relation_locator::{relation_path, RelationLocator},
     MemPage, PageNumber,

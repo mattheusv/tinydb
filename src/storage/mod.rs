@@ -1,6 +1,7 @@
 pub mod buffer;
-pub mod page;
+pub mod disk;
 pub mod freespace;
+pub mod page;
 pub mod relation_locator;
 pub mod smgr;
 
