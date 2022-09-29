@@ -3,8 +3,9 @@ use std::io::{Cursor, Read};
 use crate::{
     relation::Relation,
     storage::{
-        bufpage::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
-        freespace, BufferPool,
+        freespace,
+        page::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
+        BufferPool,
     },
 };
 use anyhow::Result;

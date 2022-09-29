@@ -5,7 +5,7 @@ use crate::{
         heaptuple::{HeapTuple, TupleDesc},
     },
     relation::Relation,
-    storage::{bufpage::PageHeader, BufferPool, PAGE_SIZE},
+    storage::{page::PageHeader, BufferPool, PAGE_SIZE},
     Oid,
 };
 use anyhow::Result;

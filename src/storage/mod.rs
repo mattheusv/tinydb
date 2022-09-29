@@ -1,5 +1,5 @@
 pub mod buffer;
-pub mod bufpage;
+pub mod page;
 pub mod freespace;
 pub mod relation_locator;
 pub mod smgr;
