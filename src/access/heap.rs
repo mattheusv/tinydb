@@ -15,9 +15,9 @@ use super::heaptuple::HeapTuple;
 /// Insert a new tuple into a heap page of the given relation.
 pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
-    let page = buffer_pool.get_page(&buffer)?;
+    let mut page = buffer_pool.get_page(&buffer)?;
 
-    page_add_item(&page, &tuple.encode()?)?;
+    page_add_item(&mut page, &tuple.encode()?)?;
 
     buffer_pool.unpin_buffer(buffer, true)?;
 
@@ -44,12 +44,10 @@ where
     let page = buffer_pool.get_page(&buffer)?;
     let page_header = PageHeader::new(&page)?;
 
-    let page = page.borrow();
-
     // Get a reference to the raw data of item_id_data.
-    let item_id_data = &page.slice(PAGE_HEADER_SIZE, page_header.start_free_space as usize);
+    let item_id_data = page.slice(PAGE_HEADER_SIZE, page_header.start_free_space as usize);
 
-    let mut item_id_data_cursor = Cursor::new(item_id_data);
+    let mut item_id_data_cursor = Cursor::new(item_id_data.as_ref());
     let mut item_id_data = vec![0; ITEM_ID_SIZE];
     loop {
         let size = item_id_data_cursor.read(&mut item_id_data)?;
@@ -66,7 +64,7 @@ where
             item_id.offset as usize,
             (item_id.offset + item_id.length) as usize,
         );
-        let tuple = HeapTuple::decode(data)?;
+        let tuple = HeapTuple::decode(&data)?;
 
         f(tuple)?;
 

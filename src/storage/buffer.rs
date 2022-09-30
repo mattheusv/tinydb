@@ -1,4 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashMap,
+    io::{self, Seek, Write},
+    rc::Rc,
+};
 
 use anyhow::{bail, Result};
 use log::debug;
@@ -6,11 +11,6 @@ use log::debug;
 use crate::{lru::LRU, relation::Relation, Oid, INVALID_OID};
 
 use super::{smgr::StorageManager, Page, PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
-
-/// A mutable reference to a page.
-///
-/// It mostly used by buffer pool and access methods.
-pub type MemPage = Rc<RefCell<Bytes>>;
 
 /// Buffer identifiers.
 ///
@@ -67,7 +67,7 @@ struct BufferDesc {
     rel: Option<Relation>,
 
     /// Raw page from buffer.
-    page: MemPage,
+    page: BufferPage,
 }
 
 impl BufferDesc {
@@ -78,7 +78,7 @@ impl BufferDesc {
             refcount: 0,
             is_dirty: false,
             rel: None,
-            page: Rc::new(RefCell::new(Bytes::new())),
+            page: BufferPage::default(),
         }
     }
 
@@ -165,14 +165,14 @@ impl BufferPool {
                 new_buf_desc.refcount = 0;
                 new_buf_desc.is_dirty = false;
                 new_buf_desc.rel = Some(rel.clone());
-                new_buf_desc.page.borrow_mut().reset();
+                new_buf_desc.page.0.replace([0; PAGE_SIZE]);
             }
 
             // Read page from disk and store inside buffer descriptor.
             self.smgr.read(
                 rel,
                 page_num,
-                &mut new_buf_desc.borrow().page.borrow_mut().bytes_mut(),
+                &mut new_buf_desc.borrow().page.0.borrow_mut(),
             )?;
 
             // Add buffer descriptior on cache and pinned.
@@ -199,14 +199,14 @@ impl BufferPool {
         self.smgr.write(
             &buf_desc.relation()?,
             buf_desc.tag.page_number,
-            &page.borrow().bytes(),
+            &page.0.borrow(),
         )?;
 
         Ok(())
     }
 
     /// Return the page contents from a buffer.
-    pub fn get_page(&self, buffer: &Buffer) -> Result<MemPage> {
+    pub fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
         Ok(self.get_buffer_descriptor(*buffer)?.borrow().page.clone())
     }
 
@@ -308,7 +308,7 @@ impl BufferPool {
             self.smgr.write(
                 &buf_desc.relation()?,
                 buf_desc.tag.page_number,
-                &page.borrow().bytes(),
+                &page.0.borrow(),
             )?;
         }
         Ok(())
@@ -320,74 +320,131 @@ impl BufferPool {
     }
 }
 
-/// Bytes is a wrapper over a byte array that makes it easy to write, overwrite and reset that byte array.
-#[derive(PartialEq, Debug)]
-pub struct Bytes {
-    page: Page,
-}
+/// A mutable reference counter to a buffer page.
+///
+/// BufferPage is reference counted and clonning will just increase
+/// the reference counter.
+///
+/// Buffer page is a read only instance of a page. To write
+/// data on buffer page call the writer method, that will
+/// create a new buffer page writer, writing incomming buffer
+/// data in a mutable shared reference of a page.
+///
+/// It mostly used by buffer pool and access methods.
+pub struct BufferPage(Rc<RefCell<Page>>);
 
-impl Bytes {
-    /// Create a new empty bytes buffer.
-    pub fn new() -> Self {
-        Self {
-            page: [0; PAGE_SIZE],
+impl BufferPage {
+    /// Create a new page writer, writing new data to
+    /// the same reference of a page.
+    pub fn writer(&mut self) -> BufferPageWriter {
+        BufferPageWriter {
+            pos: 0,
+            page: self.0.clone(),
         }
-    }
-
-    /// Override the current bytes from buffer to the incoming data.
-    pub fn write(&mut self, data: [u8; PAGE_SIZE]) {
-        self.page = data;
-    }
-
-    /// Write at bytes buffer from a vec. Panic if data.len() > N.
-    pub fn write_from_vec(&mut self, data: Vec<u8>) {
-        self.write(self.vec_to_array(data));
-    }
-
-    /// Write the comming data overrinding the bytes buffer starting at the given offset.
-    pub fn write_at(&mut self, data: &Vec<u8>, offset: usize) {
-        assert!(
-            data.len() <= self.page.len() + offset,
-            "Data overflow the current buffer size"
-        );
-
-        let mut idx_outer = 0;
-        for idx in offset..self.page.len() {
-            if idx_outer >= data.len() {
-                break;
-            }
-            self.page[idx] = data[idx_outer];
-            idx_outer += 1;
-        }
-    }
-
-    /// Return the current bytes inside buffer.
-    pub fn bytes(&self) -> [u8; PAGE_SIZE] {
-        self.page
-    }
-
-    /// Return a mutable reference to override.
-    pub fn bytes_mut(&mut self) -> &mut [u8; PAGE_SIZE] {
-        &mut self.page
     }
 
     /// Return a slice of page on the given range.
-    pub fn slice(&self, start: usize, end: usize) -> &[u8] {
-        &self.page[start..end]
+    pub fn slice(&self, start: usize, end: usize) -> Ref<[u8]> {
+        Ref::map(self.0.borrow(), |data| &data[start..end])
+    }
+}
+
+/// A buffer page writer.
+///
+/// BufferPageWriter implements std::io::Write and std::io::Seek traits
+/// so it can be used as a writer parameter when serializing data.
+pub struct BufferPageWriter {
+    /// Current position of writer to write incommig buffer data.
+    pos: usize,
+
+    /// Mutable shared reference to write incomming data.
+    page: Rc<RefCell<Page>>,
+}
+
+impl io::Write for BufferPageWriter {
+    /// Write the incomming buf on in memory referente of page.
+    ///
+    /// The incomming buf lenght can not exceed the PAGE_SIZE.
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let new_size = self.pos + buf.len();
+        if new_size > self.page.borrow().len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Size of buffer {} can not be greater than {}",
+                    new_size,
+                    self.page.borrow().len(),
+                ),
+            ));
+        }
+
+        let mut page = self.page.borrow_mut();
+
+        let mut current_pos = self.pos;
+        for b in buf {
+            page[current_pos] = b.clone();
+            current_pos += 1;
+        }
+
+        self.pos = current_pos;
+
+        Ok(buf.len())
     }
 
-    /// Resets the buffer to be empty, but it retains the underlying storage for use by future writes.
-    pub fn reset(&mut self) {
-        self.page = [0; PAGE_SIZE];
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
+}
 
-    fn vec_to_array<T>(&self, v: Vec<T>) -> [T; PAGE_SIZE] {
-        v.try_into().unwrap_or_else(|v: Vec<T>| {
-            panic!(
-                "Expected a Vec of length {} but it was {}",
-                PAGE_SIZE,
-                v.len()
-            )
-        })
+impl BufferPageWriter {
+    /// An wrapper around seek and write calls.
+    ///
+    /// Start to write the incomming buf data that the given offset.
+    pub fn write_at(&mut self, buf: &[u8], offset: io::SeekFrom) -> Result<usize> {
+        self.seek(offset)?;
+        let size = self.write(buf)?;
+        Ok(size)
+    }
+}
+
+impl io::Seek for BufferPageWriter {
+    /// Change the current position of buffer page writer.
+    fn seek(&mut self, pos: io::SeekFrom) -> std::io::Result<u64> {
+        let page_size = self.page.borrow().len();
+        match pos {
+            std::io::SeekFrom::Start(pos) => {
+                self.pos = pos as usize;
+            }
+            std::io::SeekFrom::End(pos) => {
+                self.pos = page_size + pos as usize;
+            }
+            std::io::SeekFrom::Current(pos) => {
+                self.pos += pos as usize;
+            }
+        };
+
+        if self.pos >= page_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Can not seek for a position {} that is greater than page size {}.",
+                    self.pos, page_size,
+                ),
+            ));
+        }
+
+        Ok(self.pos as u64)
+    }
+}
+
+impl Default for BufferPage {
+    fn default() -> Self {
+        Self(Rc::new(RefCell::new([0; PAGE_SIZE])))
+    }
+}
+
+impl Clone for BufferPage {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }

@@ -5,7 +5,7 @@ use crate::{
         heaptuple::{HeapTuple, TupleDesc},
     },
     relation::Relation,
-    storage::{page::PageHeader, BufferPool, PAGE_SIZE},
+    storage::{page::PageHeader, BufferPool},
     Oid,
 };
 use anyhow::Result;
@@ -103,12 +103,9 @@ pub fn initialize_default_page_header(buffer: &mut BufferPool, rel: &Relation) -
     }
 
     let buf_id = buffer.alloc_buffer(rel)?;
+    let mut page = buffer.get_page(&buf_id)?;
 
-    let mut data = bincode::serialize(&PageHeader::default())?;
-    data.resize(PAGE_SIZE, u8::default());
-
-    let page = buffer.get_page(&buf_id)?;
-    page.borrow_mut().write_from_vec(data);
+    bincode::serialize_into(&mut page.writer(), &PageHeader::default())?;
 
     buffer.flush_buffer(&buf_id)?;
     buffer.unpin_buffer(buf_id, true)?;

@@ -1,8 +1,12 @@
-use std::mem::size_of;
+use anyhow::Result;
+use std::{
+    io::{self, Seek},
+    mem::size_of,
+};
 
 use serde::{Deserialize, Serialize};
 
-use super::{buffer::MemPage, PAGE_SIZE};
+use super::{buffer::BufferPage, PAGE_SIZE};
 
 /// Represents the fixed size of a page header.
 pub const PAGE_HEADER_SIZE: usize = size_of::<PageHeader>();
@@ -21,8 +25,8 @@ pub struct PageHeader {
 
 impl PageHeader {
     /// Deserializa the page header for the given raw page data.
-    pub fn new(page: &MemPage) -> Result<Self, bincode::Error> {
-        bincode::deserialize::<PageHeader>(&page.borrow().slice(0, PAGE_HEADER_SIZE))
+    pub fn new(page: &BufferPage) -> Result<Self, bincode::Error> {
+        bincode::deserialize::<PageHeader>(&page.slice(0, PAGE_HEADER_SIZE))
     }
 }
 
@@ -54,9 +58,8 @@ pub const ITEM_ID_SIZE: usize = size_of::<ItemId>();
 
 /// Add a new item to a page. The page header start_free_space and end_free_space is also updated
 /// to point to the new offsets after the item is inserted on in-memory page.
-pub fn page_add_item(page: &MemPage, item: &Vec<u8>) -> Result<(), bincode::Error> {
+pub fn page_add_item(page: &mut BufferPage, item: &Vec<u8>) -> Result<()> {
     let mut header = PageHeader::new(page)?;
-    let mut page = page.borrow_mut();
 
     // Select the offset number to place the new item
     let item_id_offset = header.start_free_space as usize;
@@ -64,37 +67,39 @@ pub fn page_add_item(page: &MemPage, item: &Vec<u8>) -> Result<(), bincode::Erro
         offset: header.end_free_space - item.len() as u16,
         length: item.len() as u16,
     };
-    page.write_at(&bincode::serialize(&item_id)?, item_id_offset);
+    let mut page_writer = page.writer();
+
+    page_writer.seek(io::SeekFrom::Start(item_id_offset as u64))?;
+    bincode::serialize_into(&mut page_writer, &item_id)?;
 
     // Write the new item on page.
-    page.write_at(item, item_id.offset as usize);
+    page_writer.write_at(item, io::SeekFrom::Start(item_id.offset as u64))?;
 
     // Adjust the page header
     header.start_free_space = (item_id_offset + size_of::<ItemId>()) as u16;
     header.end_free_space = item_id.offset;
 
     // Write the adjusted page header at the in-memory page.
-    page.write_at(&bincode::serialize(&header)?, 0);
+    page_writer.seek(io::SeekFrom::Start(0))?;
+    bincode::serialize_into(&mut page_writer, &header)?;
 
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
-
-    use crate::storage::buffer::Bytes;
 
     use super::*;
 
     #[test]
     fn test_page_add_item() -> Result<(), bincode::Error> {
         // Create a new empty page with the default header values.
-        let page = Rc::new(RefCell::new(Bytes::new()));
-        page.borrow_mut()
-            .write_at(&bincode::serialize(&PageHeader::default())?, 0);
+        let mut page = BufferPage::default();
 
-        let result = page_add_item(&page, &bincode::serialize(&150)?);
+        let mut page_writer = page.writer();
+        bincode::serialize_into(&mut page_writer, &PageHeader::default())?;
+
+        let result = page_add_item(&mut page, &bincode::serialize(&150)?);
         assert!(
             result.is_ok(),
             "Failed to add new item on page: {}",
@@ -102,8 +107,16 @@ mod tests {
         );
 
         let header = PageHeader::new(&page)?;
-        assert_eq!(header.start_free_space, 28);
-        assert_eq!(header.end_free_space, 8188);
+        assert_eq!(
+            header.start_free_space, 28,
+            "Expected start free space {}, got {}",
+            header.start_free_space, 28
+        );
+        assert_eq!(
+            header.end_free_space, 8188,
+            "Expected end free space {}, got {}",
+            header.end_free_space, 8188
+        );
 
         Ok(())
     }

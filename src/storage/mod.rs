@@ -29,5 +29,5 @@ pub const PAGE_SIZE: usize = 8192;
 ///
 /// Buffer pool and access methods normally works using
 /// MemPage that contains the actual page data and other
-/// metadatas.
+/// helper methods.
 pub type Page = [u8; PAGE_SIZE];
