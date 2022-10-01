@@ -1,7 +1,9 @@
+use std::{cell::RefCell, rc::Rc};
+
 use anyhow::{bail, Result};
 
 use crate::{
-    access::{self, heap::heap_iter, heaptuple::TupleDesc},
+    access::{self, heap::HeapIterator, heaptuple::TupleDesc},
     new_object_id,
     storage::{relation_locator::relation_path, BufferPool},
     Oid,
@@ -25,31 +27,31 @@ pub enum Error {
 
 /// Return the tuple description of the given relation name.
 pub fn tuple_desc_from_relation(
-    buffer_pool: &mut BufferPool,
+    buffer_pool: Rc<RefCell<BufferPool>>,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<TupleDesc> {
     let pg_attribute = access::open_pg_attribute_relation(db_oid);
 
-    let pg_class_rel = get_pg_class_relation(buffer_pool, db_oid, rel_name)?;
+    let pg_class_rel = get_pg_class_relation(buffer_pool.clone(), db_oid, rel_name)?;
 
     let mut attributes = Vec::new();
 
-    heap_iter(buffer_pool, &pg_attribute, |tuple| -> Result<()> {
+    let heap = HeapIterator::new(buffer_pool, &pg_attribute)?;
+    for tuple in heap {
+        let tuple = tuple?;
         let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
         if attr.attrelid == pg_class_rel.oid {
             attributes.push(attr);
         }
-
-        Ok(())
-    })?;
+    }
 
     Ok(TupleDesc { attrs: attributes })
 }
 
 /// Return the pg class tuple from the given relation name.
 pub fn get_pg_class_relation(
-    buffer_pool: &mut BufferPool,
+    buffer_pool: Rc<RefCell<BufferPool>>,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<PgClass> {
@@ -57,7 +59,9 @@ pub fn get_pg_class_relation(
 
     let mut pg_class_tuple = None;
 
-    heap_iter(buffer_pool, &pg_class_rel, |tuple| -> Result<()> {
+    let heap = HeapIterator::new(buffer_pool, &pg_class_rel)?;
+    for tuple in heap {
+        let tuple = tuple?;
         // Do nothing if the oid is already founded.
         if pg_class_tuple.is_none() {
             let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;
@@ -65,8 +69,7 @@ pub fn get_pg_class_relation(
                 pg_class_tuple = Some(pg_class);
             }
         }
-        Ok(())
-    })?;
+    }
 
     match pg_class_tuple {
         Some(tuple) => Ok(tuple),

@@ -1,5 +1,7 @@
 use std::io::{Cursor, Read};
+use std::{cell::RefCell, rc::Rc};
 
+use crate::storage::buffer::Buffer;
 use crate::{
     relation::Relation,
     storage::{
@@ -24,54 +26,103 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
     Ok(())
 }
 
-pub fn heap_scan(buffer_pool: &mut BufferPool, rel: &Relation) -> Result<Vec<HeapTuple>> {
+pub fn heap_scan(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result<Vec<HeapTuple>> {
     let mut tuples = Vec::new();
-    heap_iter(buffer_pool, rel, |tuple| -> Result<()> {
-        tuples.push(tuple);
-        Ok(())
-    })?;
+    let heap = HeapIterator::new(buffer_pool, rel)?;
+    for tuple in heap {
+        tuples.push(tuple?);
+    }
     Ok(tuples)
 }
 
-/// Iterate over all heap pages and heap tuples to the given relation calling function f to each
-/// tuple in a page.
-pub fn heap_iter<F>(buffer_pool: &mut BufferPool, rel: &Relation, mut f: F) -> Result<()>
-where
-    F: FnMut(HeapTuple) -> Result<()>,
-{
-    // TODO: Iterate over all pages on relation
-    let buffer = buffer_pool.fetch_buffer(rel, 1)?;
-    let page = buffer_pool.get_page(&buffer)?;
-    let page_header = PageHeader::new(&page)?;
+/// Heap tuple iterator iterate over all heap tuples of a given relation.
+///
+/// HeapTupleIterator implements the Iterator trait.
+pub struct HeapIterator {
+    /// Buffer pool used to fetch buffers and get buffer page contents.
+    buffer_pool: Rc<RefCell<BufferPool>>,
 
-    // Get a reference to the raw data of item_id_data.
-    let item_id_data = page.slice(PAGE_HEADER_SIZE, page_header.start_free_space as usize);
+    /// Cursor used to read item id pointers.
+    item_id_data_cursor: Cursor<Vec<u8>>,
 
-    let mut item_id_data_cursor = Cursor::new(item_id_data.as_ref());
-    let mut item_id_data = vec![0; ITEM_ID_SIZE];
-    loop {
-        let size = item_id_data_cursor.read(&mut item_id_data)?;
-        if size == 0 {
-            // EOF
-            break;
+    /// Holds the raw binary data used to deserialize a item
+    /// id object.
+    item_id_data: Vec<u8>,
+
+    /// Current buffer used to scan. None if there is no more
+    /// buffer to scan on page.
+    buffer: Option<Buffer>,
+}
+
+impl Iterator for HeapIterator {
+    type Item = Result<HeapTuple>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.try_next() {
+            Ok(tuple) => match tuple {
+                Some(tuple) => Some(Ok(tuple)),
+                None => None,
+            },
+            Err(err) => Some(Err(err)),
         }
+    }
+}
 
-        // Deserialize a single ItemId from the list item_id_data.
-        let item_id = bincode::deserialize::<ItemId>(&item_id_data)?;
+impl HeapIterator {
+    /// Create a new heap tuple iterator over the given relation.
+    pub fn new(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result<Self> {
+        // TODO: Iterate over all pages on relation
+        let buffer = buffer_pool.borrow_mut().fetch_buffer(rel, 1)?;
 
-        // Slice the raw page to get a refenrece to a tuple inside the page.
-        let data = page.slice(
-            item_id.offset as usize,
-            (item_id.offset + item_id.length) as usize,
-        );
-        let tuple = HeapTuple::decode(&data)?;
+        let page = buffer_pool.borrow().get_page(&buffer)?;
+        let page_header = PageHeader::new(&page)?;
 
-        f(tuple)?;
+        let item_id_data = page.slice(PAGE_HEADER_SIZE, page_header.start_free_space as usize);
 
-        item_id_data = vec![0; ITEM_ID_SIZE];
+        Ok(Self {
+            buffer_pool,
+            buffer: Some(buffer),
+            item_id_data: vec![0; ITEM_ID_SIZE],
+            item_id_data_cursor: Cursor::new(item_id_data.to_vec()),
+        })
     }
 
-    buffer_pool.unpin_buffer(buffer, false)?;
+    /// Return the next tuple from buffer if exists. If the all tuples was readed
+    /// from current buffer, try_next will check if there is more buffer's to
+    /// be readed, if not, return None.
+    fn try_next(&mut self) -> Result<Option<HeapTuple>> {
+        match self.buffer {
+            Some(buffer) => {
+                let size = self.item_id_data_cursor.read(&mut self.item_id_data)?;
+                if size == 0 {
+                    // All item data pointers was readed, unpin the buffer
+                    // and return None.
+                    //
+                    // TODO: Check if there is more buffers to read.
+                    self.buffer_pool
+                        .borrow_mut()
+                        .unpin_buffer(buffer, false /* is_dirty*/)?;
+                    return Ok(None);
+                }
 
-    Ok(())
+                let page = self.buffer_pool.borrow().get_page(&buffer)?;
+
+                // Deserialize a single ItemId from the list item_id_data.
+                let item_id = bincode::deserialize::<ItemId>(&self.item_id_data)?;
+
+                // Slice the raw page to get a refenrece to a tuple inside the page.
+                let data = &page.slice(
+                    item_id.offset as usize,
+                    (item_id.offset + item_id.length) as usize,
+                );
+                let tuple = HeapTuple::decode(data)?;
+
+                self.item_id_data = vec![0; ITEM_ID_SIZE];
+
+                Ok(Some(tuple))
+            }
+            // There is no more buffer's to scan.
+            None => Ok(None),
+        }
+    }
 }

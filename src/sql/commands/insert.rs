@@ -19,8 +19,7 @@ pub fn insert_into(
     source: Box<ast::Query>,
 ) -> Result<()> {
     let rel_name = table_name.0[0].to_string();
-    let pg_class_rel =
-        catalog::get_pg_class_relation(&mut buffer_pool.borrow_mut(), db_oid, &rel_name)?;
+    let pg_class_rel = catalog::get_pg_class_relation(buffer_pool.clone(), db_oid, &rel_name)?;
 
     let rel = access::open_relation(
         pg_class_rel.oid,
@@ -31,11 +30,8 @@ pub fn insert_into(
 
     match source.body {
         ast::SetExpr::Values(values) => {
-            let tuple_desc = catalog::tuple_desc_from_relation(
-                &mut buffer_pool.borrow_mut(),
-                db_oid,
-                &rel_name,
-            )?;
+            let tuple_desc =
+                catalog::tuple_desc_from_relation(buffer_pool.clone(), db_oid, &rel_name)?;
 
             let mut heap_values = Datums::default();
 

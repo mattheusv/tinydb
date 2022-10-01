@@ -33,7 +33,7 @@ impl Executor {
 
     /// Planner executor for a plan node of SeqScan type.
     fn exec_seq_scan(&self, node: &Plan) -> Result<TupleTable> {
-        let tuples = heap_scan(&mut self.buffer_pool.borrow_mut(), &node.relation)?;
+        let tuples = heap_scan(self.buffer_pool.clone(), &node.relation)?;
         Ok(TupleTable {
             tuple_desc: node.tuple_desc.clone(),
             tuples,
