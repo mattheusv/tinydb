@@ -4,9 +4,7 @@ use std::rc::Rc;
 
 use crate::sql::commands::explain::explain;
 use crate::sql::commands::SQLError;
-use crate::sql::commands::{
-    create::create_database, create::create_table, insert::insert_into, query::select,
-};
+use crate::sql::commands::{create::create_table, insert::insert_into, query::select};
 use crate::storage::BufferPool;
 use crate::Oid;
 use anyhow::{bail, Result};
@@ -51,7 +49,6 @@ impl Engine {
         stmt: Statement,
     ) -> Result<()> {
         match stmt {
-            Statement::CreateDatabase { db_name, .. } => create_database(db_name),
             Statement::CreateTable { name, columns, .. } => {
                 create_table(self.buffer_pool.clone(), db_oid, name, columns)
             }

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fs, mem::size_of, rc::Rc};
+use std::{cell::RefCell, mem::size_of, rc::Rc};
 
 use anyhow::{bail, Result};
 use sqlparser::ast::{self, ColumnDef, DataType, ObjectName};
@@ -11,11 +11,6 @@ use crate::{
     storage::BufferPool,
     Oid,
 };
-
-pub fn create_database(name: ObjectName) -> Result<()> {
-    fs::create_dir(name.0[0].to_string())?;
-    Ok(())
-}
 
 pub fn create_table(
     buffer_pool: Rc<RefCell<BufferPool>>,
