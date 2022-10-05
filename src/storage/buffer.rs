@@ -320,6 +320,13 @@ impl BufferPool {
     }
 }
 
+impl Drop for BufferPool {
+    fn drop(&mut self) {
+        self.flush_all_buffers()
+            .expect("failed to flush all buffers to disk");
+    }
+}
+
 /// A mutable reference counter to a buffer page.
 ///
 /// BufferPage is reference counted and clonning will just increase

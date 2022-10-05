@@ -18,15 +18,6 @@ pub struct Engine {
     buffer_pool: Rc<RefCell<BufferPool>>,
 }
 
-impl Drop for Engine {
-    fn drop(&mut self) {
-        self.buffer_pool
-            .borrow_mut()
-            .flush_all_buffers()
-            .expect("failed to flush all buffers to disk");
-    }
-}
-
 impl Engine {
     pub fn new(buffer_pool: Rc<RefCell<BufferPool>>) -> Self {
         Self { buffer_pool }
