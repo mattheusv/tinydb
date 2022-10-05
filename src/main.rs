@@ -7,8 +7,9 @@ use std::rc::Rc;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use tinydb::catalog::pg_database;
-use tinydb::engine::Engine;
 use tinydb::initdb::init_database;
+use tinydb::sql::ConnectionExecutor;
+use tinydb::sql::ExecutorConfig;
 use tinydb::storage::BufferPool;
 
 use structopt::StructOpt;
@@ -51,10 +52,13 @@ fn main() {
 
     let data_dir = cwd.join(&flags.data_dir);
 
-    let mut buffer = BufferPool::new(120, StorageManager::new(&data_dir));
+    let buffer = Rc::new(RefCell::new(BufferPool::new(
+        120,
+        StorageManager::new(&data_dir),
+    )));
 
     if flags.init {
-        init_database(&mut buffer, &data_dir).expect("Failed init default database");
+        init_database(&mut buffer.borrow_mut(), &data_dir).expect("Failed init default database");
     }
 
     let mut rl = Editor::<()>::new();
@@ -64,16 +68,20 @@ fn main() {
 
     env::set_current_dir(Path::new(&flags.data_dir)).unwrap();
 
-    let mut stdout = io::stdout();
-    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)));
+    let config = ExecutorConfig {
+        database: pg_database::TINYDB_OID,
+    };
+    let mut conn_executor = ConnectionExecutor::new(config, buffer);
 
     println!("Connected at {} database", default_db_name);
+
+    let mut stdout = io::stdout();
     loop {
         let readline = rl.readline(">> ");
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
-                if let Err(err) = engine.exec(&mut stdout, &line, &pg_database::TINYDB_OID) {
+                if let Err(err) = conn_executor.run(&mut stdout, &line) {
                     eprintln!("Error: {:?}", err);
                     continue;
                 }

@@ -6,7 +6,7 @@ use crate::{
     access::{self, heaptuple::TupleDesc},
     catalog,
     relation::Relation,
-    sql::commands::SQLError,
+    sql::SQLError,
     storage::BufferPool,
     Oid, INVALID_OID,
 };

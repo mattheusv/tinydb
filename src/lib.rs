@@ -5,7 +5,6 @@ pub mod initdb;
 use std::sync::atomic::{AtomicU64, Ordering};
 pub mod access;
 pub mod catalog;
-pub mod engine;
 pub mod executor;
 pub mod lru;
 pub mod planner;

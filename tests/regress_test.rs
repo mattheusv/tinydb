@@ -2,8 +2,8 @@ use std::{cell::RefCell, fs, io, path::Path, rc::Rc};
 
 use tinydb::{
     catalog::pg_database,
-    engine::Engine,
     initdb::init_database,
+    sql::{ConnectionExecutor, ExecutorConfig},
     storage::{smgr::StorageManager, BufferPool},
 };
 
@@ -23,11 +23,16 @@ fn test_regress() {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir to regress tests");
 
     // TODO: Make the buffer pool configurable via SQL.
-    let mut buffer = BufferPool::new(5, StorageManager::new(&temp_dir.path()));
+    let buffer = Rc::new(RefCell::new(BufferPool::new(
+        5,
+        StorageManager::new(&temp_dir.path()),
+    )));
 
     // Create a default tinydb database.
-    init_database(&mut buffer, &temp_dir.path()).expect("Failed init default database");
-    let mut engine = Engine::new(Rc::new(RefCell::new(buffer)));
+    init_database(&mut buffer.borrow_mut(), &temp_dir.path())
+        .expect("Failed init default database");
+    let config = ExecutorConfig { database: db_oid };
+    let mut conn_executor = ConnectionExecutor::new(config, buffer);
 
     for sql_file in sql_entries {
         let mut output = Vec::new();
@@ -45,8 +50,8 @@ fn test_regress() {
         for sql in sql.split_inclusive(";").collect::<Vec<&str>>() {
             output.extend_from_slice(&sql.as_bytes().to_vec());
             output.extend_from_slice("\n".as_bytes());
-            engine
-                .exec(&mut output, &sql, &db_oid)
+            conn_executor
+                .run(&mut output, &sql)
                 .expect(&format!("failed to execute {}", sql));
         }
 
