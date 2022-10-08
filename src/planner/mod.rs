@@ -1,15 +1,32 @@
 use anyhow::{bail, Result};
+use core::fmt;
 use sqlparser::ast::{self, SetExpr, TableFactor};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     access::{self, heap::HeapScanner, heaptuple::TupleDesc},
-    catalog::{self, pg_class::PgClass},
+    catalog::{self, pg_attribute::PgAttribute, pg_class::PgClass},
     relation::Relation,
     sql::SQLError,
     storage::BufferPool,
     Oid, INVALID_OID,
 };
+
+/// Information needed to project a query output.
+pub struct ProjectionState {
+    /// Projection output attributes of query.
+    ///
+    /// Note that could be in a different order that is stored on
+    /// page, since it represents the output from a query. use the
+    /// tuple_desc_ field if the attributes order on page is required.
+    pub projection: Vec<PgAttribute>,
+
+    /// Tuple descriptor from a relation heap tuple. The tuple descriptor
+    /// attributes is in the same order that is stored on page tuple.
+    pub tuple_desc: Rc<TupleDesc>,
+
+    pub child: Plan,
+}
 
 /// Sequential scan information needed by executor.
 pub struct SeqScanState {
@@ -25,6 +42,9 @@ pub struct SeqScanState {
 
 /// Types of a plan node on plan tree.
 pub enum PlanNodeType {
+    /// Projection plan node.
+    Projection { state: Box<ProjectionState> },
+
     /// Sequential scan plan node.
     SeqScan { state: SeqScanState },
 }
@@ -74,13 +94,49 @@ fn create_plan_from_select(
                 &rel_name,
             )?);
 
-            Ok(create_seq_scan(
-                buffer_pool,
-                db_oid,
-                &rel_name,
-                &pg_class,
-                tuple_desc,
-            )?)
+            let mut projection = Vec::with_capacity(select.projection.len());
+
+            for item in &select.projection {
+                match item {
+                    ast::SelectItem::UnnamedExpr(expr) => match expr {
+                        ast::Expr::Identifier(ident) => {
+                            match tuple_desc
+                                .attrs
+                                .iter()
+                                .find(|attr| attr.attname == ident.value)
+                            {
+                                Some(attr) => projection.push(attr.clone()),
+                                None => bail!(
+                                    "Attribute {} does not exists on relation {}",
+                                    ident.value,
+                                    rel_name
+                                ),
+                            }
+                        }
+                        _ => bail!(SQLError::Unsupported(from.relation.to_string())),
+                    },
+                    ast::SelectItem::Wildcard => {
+                        projection.extend_from_slice(&tuple_desc.attrs);
+                    }
+                    _ => bail!(SQLError::Unsupported(from.relation.to_string())),
+                }
+            }
+
+            Ok(Plan {
+                node_type: PlanNodeType::Projection {
+                    state: Box::new(ProjectionState {
+                        projection,
+                        tuple_desc: tuple_desc.clone(),
+                        child: create_seq_scan(
+                            buffer_pool,
+                            db_oid,
+                            &rel_name,
+                            &pg_class,
+                            tuple_desc,
+                        )?,
+                    }),
+                },
+            })
         }
         _ => bail!(SQLError::Unsupported(from.relation.to_string())),
     }
@@ -112,4 +168,13 @@ fn create_seq_scan(
             },
         },
     })
+}
+
+impl fmt::Display for PlanNodeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PlanNodeType::Projection { .. } => write!(f, "Projection"),
+            PlanNodeType::SeqScan { .. } => write!(f, "SeqScan"),
+        }
+    }
 }

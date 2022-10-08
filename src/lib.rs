@@ -1,3 +1,4 @@
+use std::ops::Index;
 use std::slice::Iter;
 
 pub mod initdb;
@@ -54,6 +55,14 @@ impl Datums {
     /// Returns an iterator over a slice of Option<Datum>
     pub fn iter(&self) -> Iter<Option<Datum>> {
         self.0.iter()
+    }
+}
+
+impl Index<usize> for Datums {
+    type Output = Option<Datum>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
 

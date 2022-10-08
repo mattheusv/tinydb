@@ -52,3 +52,48 @@ select * from t3;
 
 
 
+
+-- Test the projection behaviour specifing the columns
+
+
+select b from t2;
+          b           
+----------------------
+         abc          
+         def          
+         NULL         
+         NULL         
+ inverse column order 
+
+
+select b, a from t2;
+          b           |  a   
+----------------------+------
+         abc          |  1   
+         def          | NULL 
+         NULL         |  3   
+         NULL         | NULL 
+ inverse column order |  42  
+
+
+select c, * from t2;
+  c   |  a   |          b           |  c   
+------+------+----------------------+------
+  2   |  1   |         abc          |  2   
+ NULL | NULL |         def          | NULL 
+ NULL |  3   |         NULL         | NULL 
+  4   | NULL |         NULL         |  4   
+  70  |  42  | inverse column order |  70  
+
+
+select a, c from t2;
+  a   |  c   
+------+------
+  1   |  2   
+ NULL | NULL 
+  3   | NULL 
+ NULL |  4   
+  42  |  70  
+
+
+

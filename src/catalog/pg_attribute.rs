@@ -14,7 +14,7 @@ pub const RELATION_NAME: &'static str = "pg_attribute";
 
 /// The catalog pg_attribute stores information about table columns. There will be exactly one pg_attribute row for
 /// every column in every table in the database.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PgAttribute {
     /// The relation this column belongs to.
     pub attrelid: Oid,

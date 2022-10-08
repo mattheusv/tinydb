@@ -16,3 +16,12 @@ select * from t2;
 create table t3(a boolean, b boolean);
 insert into t3(a, b) values (true, false);
 select * from t3;
+
+
+-- Test the projection behaviour specifing the columns
+
+
+select b from t2;
+select b, a from t2;
+select c, * from t2;
+select a, c from t2;

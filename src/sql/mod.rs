@@ -21,7 +21,7 @@ use crate::{
         self, heap::heap_create, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID,
         pg_type,
     },
-    executor::Executor,
+    executor::{Executor, TupleTable},
     planner::{Plan, PlanNodeType},
     storage::BufferPool,
     Datums, Oid,
@@ -90,7 +90,7 @@ impl ConnectionExecutor {
         let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
         let executor = Executor::new();
         let tuple_table = executor.exec(&mut plan)?;
-        self.print_relation_tuples(output, tuple_table.tuples, &tuple_table.tuple_desc)?;
+        self.print_relation_tuples(output, tuple_table)?;
         Ok(())
     }
 
@@ -261,6 +261,7 @@ impl ConnectionExecutor {
             PlanNodeType::SeqScan { state } => {
                 write!(output, "Seq Scan on {}\n", state.relation.borrow().rel_name)?;
             }
+            PlanNodeType::Projection { .. } => {} // Don't show projection plan node
         };
         write!(output, "\n")?;
         Ok(())
@@ -269,20 +270,19 @@ impl ConnectionExecutor {
     fn print_relation_tuples(
         &self,
         output: &mut dyn io::Write,
-        tuples: Vec<HeapTuple>,
-        tuple_desc: &TupleDesc,
+        tuple_table: TupleTable,
     ) -> Result<()> {
         let mut columns = Vec::new();
         let mut records = Vec::new();
 
-        for attr in &tuple_desc.attrs {
+        for attr in &tuple_table.tuple_desc.attrs {
             columns.push(attr.attname.clone());
         }
 
-        for tuple in tuples {
+        for slot in tuple_table.values {
             let mut tuple_values = Vec::new();
-            for attr in tuple_desc.attrs.iter() {
-                let datum = tuple.get_attr(attr.attnum, tuple_desc)?;
+            for (attidx, attr) in tuple_table.tuple_desc.attrs.iter().enumerate() {
+                let datum = &slot[attidx];
                 match datum {
                     Some(datum) => {
                         tuple_values.push(decode(&datum, attr.atttypid)?);
