@@ -28,7 +28,7 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
 
 pub fn heap_scan(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result<Vec<HeapTuple>> {
     let mut tuples = Vec::new();
-    let heap = HeapIterator::new(buffer_pool, rel)?;
+    let heap = HeapScanner::new(buffer_pool, rel)?;
     for tuple in heap {
         tuples.push(tuple?);
     }
@@ -38,7 +38,7 @@ pub fn heap_scan(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result
 /// Heap tuple iterator iterate over all heap tuples of a given relation.
 ///
 /// HeapTupleIterator implements the Iterator trait.
-pub struct HeapIterator {
+pub struct HeapScanner {
     /// Buffer pool used to fetch buffers and get buffer page contents.
     buffer_pool: Rc<RefCell<BufferPool>>,
 
@@ -54,11 +54,12 @@ pub struct HeapIterator {
     buffer: Option<Buffer>,
 }
 
-impl Iterator for HeapIterator {
+impl Iterator for HeapScanner {
     type Item = Result<HeapTuple>;
 
+    /// Wraps next_tuple into Iterator trait implementation.
     fn next(&mut self) -> Option<Self::Item> {
-        match self.try_next() {
+        match self.next_tuple() {
             Ok(tuple) => match tuple {
                 Some(tuple) => Some(Ok(tuple)),
                 None => None,
@@ -68,7 +69,7 @@ impl Iterator for HeapIterator {
     }
 }
 
-impl HeapIterator {
+impl HeapScanner {
     /// Create a new heap tuple iterator over the given relation.
     pub fn new(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result<Self> {
         // TODO: Iterate over all pages on relation
@@ -88,9 +89,9 @@ impl HeapIterator {
     }
 
     /// Return the next tuple from buffer if exists. If the all tuples was readed
-    /// from current buffer, try_next will check if there is more buffer's to
+    /// from current buffer, next_tuple will check if there is more buffer's to
     /// be readed, if not, return None.
-    fn try_next(&mut self) -> Result<Option<HeapTuple>> {
+    pub fn next_tuple(&mut self) -> Result<Option<HeapTuple>> {
         match self.buffer {
             Some(buffer) => {
                 let size = self.item_id_data_cursor.read(&mut self.item_id_data)?;

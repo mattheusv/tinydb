@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use anyhow::{bail, Result};
 
 use crate::{
-    access::{self, heap::HeapIterator, heaptuple::TupleDesc},
+    access::{self, heap::HeapScanner, heaptuple::TupleDesc},
     new_object_id,
     storage::{relation_locator::relation_path, BufferPool},
     Oid,
@@ -37,7 +37,7 @@ pub fn tuple_desc_from_relation(
 
     let mut attributes = Vec::new();
 
-    let heap = HeapIterator::new(buffer_pool, &pg_attribute)?;
+    let heap = HeapScanner::new(buffer_pool, &pg_attribute)?;
     for tuple in heap {
         let tuple = tuple?;
         let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
@@ -59,7 +59,7 @@ pub fn get_pg_class_relation(
 
     let mut pg_class_tuple = None;
 
-    let heap = HeapIterator::new(buffer_pool, &pg_class_rel)?;
+    let heap = HeapScanner::new(buffer_pool, &pg_class_rel)?;
     for tuple in heap {
         let tuple = tuple?;
         // Do nothing if the oid is already founded.

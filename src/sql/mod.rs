@@ -87,9 +87,9 @@ impl ConnectionExecutor {
     }
 
     fn exec_select(&mut self, output: &mut dyn io::Write, query: Box<ast::Query>) -> Result<()> {
-        let plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
-        let executor = Executor::new(self.buffer_pool.clone());
-        let tuple_table = executor.exec(&plan)?;
+        let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
+        let executor = Executor::new();
+        let tuple_table = executor.exec(&mut plan)?;
         self.print_relation_tuples(output, tuple_table.tuples, &tuple_table.tuple_desc)?;
         Ok(())
     }
@@ -257,9 +257,9 @@ impl ConnectionExecutor {
 -----------------------------
 "
         )?;
-        match plan.node_type {
-            PlanNodeType::SeqScan => {
-                write!(output, "Seq Scan on {}\n", plan.relation.borrow().rel_name)?;
+        match &plan.node_type {
+            PlanNodeType::SeqScan { state } => {
+                write!(output, "Seq Scan on {}\n", state.relation.borrow().rel_name)?;
             }
         };
         write!(output, "\n")?;
