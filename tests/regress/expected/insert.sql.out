@@ -1,13 +1,8 @@
 create table t(a int, b int, c int);
-
 insert into t(a, b, c) values(10, 20, 30);
-
 insert into t(a, c) values(40, 50);
-
 insert into t(b) values(60);
-
 insert into t values (42, 62, 82);
-
 select * from t;
   a   |  b   |  c   
 ------+------+------
@@ -16,20 +11,12 @@ select * from t;
  NULL |  60  | NULL 
   42  |  62  |  82  
 
-
-
 create table t2(a int, b varchar, c int);
-
 insert into t2(a, b, c) values(1, 'abc', 2);
-
 insert into t2(b) values('def');
-
 insert into t2(a) values(3);
-
 insert into t2(c) values(4);
-
 insert into t2(b, c, a) values('inverse column order', 70, 42);
-
 select * from t2;
   a   |          b           |  c   
 ------+----------------------+------
@@ -39,23 +26,14 @@ select * from t2;
  NULL |         NULL         |  4   
   42  | inverse column order |  70  
 
-
-
 create table t3(a boolean, b boolean);
-
 insert into t3(a, b) values (true, false);
-
 select * from t3;
   a   |   b   
 ------+-------
  true | false 
 
-
-
-
 -- Test the projection behaviour specifing the columns
-
-
 select b from t2;
           b           
 ----------------------
@@ -64,7 +42,6 @@ select b from t2;
          NULL         
          NULL         
  inverse column order 
-
 
 select b, a from t2;
           b           |  a   
@@ -75,7 +52,6 @@ select b, a from t2;
          NULL         | NULL 
  inverse column order |  42  
 
-
 select c, * from t2;
   c   |  a   |          b           |  c   
 ------+------+----------------------+------
@@ -85,7 +61,6 @@ select c, * from t2;
   4   | NULL |         NULL         |  4   
   70  |  42  | inverse column order |  70  
 
-
 select a, c from t2;
   a   |  c   
 ------+------
@@ -94,6 +69,4 @@ select a, c from t2;
   3   | NULL 
  NULL |  4   
   42  |  70  
-
-
 

@@ -9,8 +9,6 @@ select * from pg_class;
  10001 |      t2       |     1663      |    false    
  10002 |      t3       |     1663      |    false    
 
-
-
 select * from pg_attribute;
  attrelid |    attname    | attnum | attlen 
 ----------+---------------+--------+--------
@@ -36,20 +34,14 @@ select * from pg_attribute;
   10002   |       a       |   1    |   1    
   10002   |       b       |   2    |   1    
 
-
-
 select * from pg_database;
  oid | datname | dattablespace 
 -----+---------+---------------
   5  | tinydb  |     1663      
-
-
 
 select * from pg_tablespace;
  oid  |  spcname   
 ------+------------
  1663 | pg_default 
  1664 | pg_global  
-
-
 

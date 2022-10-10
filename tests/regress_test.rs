@@ -47,9 +47,11 @@ fn test_regress() {
             fs::read_to_string(expected_path.join(format!("{}.out", sql_name))).expect("");
 
         let sql = fs::read_to_string(&sql_file).expect("Failed to read expected sql file");
-        for sql in sql.split_inclusive(";").collect::<Vec<&str>>() {
+        for sql in sql.lines() {
             output.extend_from_slice(&sql.as_bytes().to_vec());
-            output.extend_from_slice("\n".as_bytes());
+            if sql != "" {
+                output.extend_from_slice("\n".as_bytes());
+            }
             conn_executor
                 .run(&mut output, &sql)
                 .expect(&format!("failed to execute {}", sql));
