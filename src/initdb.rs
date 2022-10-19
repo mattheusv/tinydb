@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Initialize a empty database at the data_dir path using db_name as the database name.
-pub fn init_database(buffer: &mut BufferPool, data_dir: &Path) -> Result<()> {
+pub fn init_database(buffer: &BufferPool, data_dir: &Path) -> Result<()> {
     let db_path = data_dir
         .join("base")
         .join(pg_database::TINYDB_OID.to_string());
@@ -42,7 +42,7 @@ pub fn init_database(buffer: &mut BufferPool, data_dir: &Path) -> Result<()> {
 }
 
 /// Initialize pg_database relation and insert default system database.
-fn init_pg_database(buffer: &mut BufferPool, db_oid: &Oid) -> Result<()> {
+fn init_pg_database(buffer: &BufferPool, db_oid: &Oid) -> Result<()> {
     let pg_database = access::open_pg_database_relation();
 
     heap_create(
@@ -68,7 +68,7 @@ fn init_pg_database(buffer: &mut BufferPool, db_oid: &Oid) -> Result<()> {
 }
 
 /// Initialize pg_class relation and insert default system tables.
-fn init_pg_attribute(buffer: &mut BufferPool, db_oid: &Oid) -> Result<()> {
+fn init_pg_attribute(buffer: &BufferPool, db_oid: &Oid) -> Result<()> {
     // We need to init the page header before call heap_create because heap_create
     // actually store the heap attributes on pg_attribute, so the header relation
     // should already be filled.
@@ -93,7 +93,7 @@ fn init_pg_attribute(buffer: &mut BufferPool, db_oid: &Oid) -> Result<()> {
 /// since this table is required to any other table and itself.
 ///
 /// So here we just declare the pg_class on pg_class system table.
-fn init_pg_class(buffer: &mut BufferPool, db_oid: &Oid) -> Result<()> {
+fn init_pg_class(buffer: &BufferPool, db_oid: &Oid) -> Result<()> {
     heap_create(
         buffer,
         DEFAULTTABLESPACE_OID,
@@ -107,7 +107,7 @@ fn init_pg_class(buffer: &mut BufferPool, db_oid: &Oid) -> Result<()> {
 }
 
 /// Initialize pg_tablespace relation and insert default tablespace.
-fn init_pg_tablespace(buffer: &mut BufferPool, db_oid: &Oid) -> Result<()> {
+fn init_pg_tablespace(buffer: &BufferPool, db_oid: &Oid) -> Result<()> {
     let pg_tablespace = access::open_pg_tablespace_relation();
 
     heap_create(

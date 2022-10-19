@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use core::fmt;
 use sqlparser::ast::{self, SetExpr, TableFactor};
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 
 use crate::{
     access::{self, heap::HeapScanner, heaptuple::TupleDesc},
@@ -57,11 +57,7 @@ pub struct Plan {
 
 impl Plan {
     /// Create a new plan for the given parsed query.
-    pub fn create(
-        buffer_pool: Rc<RefCell<BufferPool>>,
-        db_oid: &Oid,
-        query: Box<ast::Query>,
-    ) -> Result<Plan> {
+    pub fn create(buffer_pool: BufferPool, db_oid: &Oid, query: Box<ast::Query>) -> Result<Plan> {
         let plan = match query.body {
             SetExpr::Select(select) => create_plan_from_select(buffer_pool, db_oid, &select)?,
             _ => bail!(SQLError::Unsupported(query.body.to_string())),
@@ -71,7 +67,7 @@ impl Plan {
 }
 
 fn create_plan_from_select(
-    buffer_pool: Rc<RefCell<BufferPool>>,
+    buffer_pool: BufferPool,
     db_oid: &Oid,
     select: &ast::Select,
 ) -> Result<Plan> {
@@ -143,7 +139,7 @@ fn create_plan_from_select(
 }
 
 fn create_seq_scan(
-    buffer_pool: Rc<RefCell<BufferPool>>,
+    buffer_pool: BufferPool,
     db_oid: &Oid,
     rel_name: &str,
     pg_class_rel: &PgClass,

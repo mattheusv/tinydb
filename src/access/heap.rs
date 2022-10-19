@@ -1,5 +1,4 @@
 use std::io::{Cursor, Read};
-use std::{cell::RefCell, rc::Rc};
 
 use crate::storage::buffer::Buffer;
 use crate::{
@@ -15,7 +14,7 @@ use anyhow::Result;
 use super::heaptuple::HeapTuple;
 
 /// Insert a new tuple into a heap page of the given relation.
-pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
+pub fn heap_insert(buffer_pool: &BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
     let mut page = buffer_pool.get_page(&buffer)?;
 
@@ -26,7 +25,7 @@ pub fn heap_insert(buffer_pool: &mut BufferPool, rel: &Relation, tuple: &HeapTup
     Ok(())
 }
 
-pub fn heap_scan(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result<Vec<HeapTuple>> {
+pub fn heap_scan(buffer_pool: BufferPool, rel: &Relation) -> Result<Vec<HeapTuple>> {
     let mut tuples = Vec::new();
     let heap = HeapScanner::new(buffer_pool, rel)?;
     for tuple in heap {
@@ -40,7 +39,7 @@ pub fn heap_scan(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result
 /// HeapTupleIterator implements the Iterator trait.
 pub struct HeapScanner {
     /// Buffer pool used to fetch buffers and get buffer page contents.
-    buffer_pool: Rc<RefCell<BufferPool>>,
+    buffer_pool: BufferPool,
 
     /// Cursor used to read item id pointers.
     item_id_data_cursor: Cursor<Vec<u8>>,
@@ -71,11 +70,11 @@ impl Iterator for HeapScanner {
 
 impl HeapScanner {
     /// Create a new heap tuple iterator over the given relation.
-    pub fn new(buffer_pool: Rc<RefCell<BufferPool>>, rel: &Relation) -> Result<Self> {
+    pub fn new(buffer_pool: BufferPool, rel: &Relation) -> Result<Self> {
         // TODO: Iterate over all pages on relation
-        let buffer = buffer_pool.borrow_mut().fetch_buffer(rel, 1)?;
+        let buffer = buffer_pool.fetch_buffer(rel, 1)?;
 
-        let page = buffer_pool.borrow().get_page(&buffer)?;
+        let page = buffer_pool.get_page(&buffer)?;
         let page_header = PageHeader::new(&page)?;
 
         let item_id_data = page.slice(PAGE_HEADER_SIZE, page_header.start_free_space as usize);
@@ -100,13 +99,11 @@ impl HeapScanner {
                     // and return None.
                     //
                     // TODO: Check if there is more buffers to read.
-                    self.buffer_pool
-                        .borrow_mut()
-                        .unpin_buffer(buffer, false /* is_dirty*/)?;
+                    self.buffer_pool.unpin_buffer(buffer, false /* is_dirty*/)?;
                     return Ok(None);
                 }
 
-                let page = self.buffer_pool.borrow().get_page(&buffer)?;
+                let page = self.buffer_pool.get_page(&buffer)?;
 
                 // Deserialize a single ItemId from the list item_id_data.
                 let item_id = bincode::deserialize::<ItemId>(&self.item_id_data)?;

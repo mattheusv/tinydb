@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use anyhow::{bail, Result};
 
 use crate::{
@@ -27,7 +25,7 @@ pub enum Error {
 
 /// Return the tuple description of the given relation name.
 pub fn tuple_desc_from_relation(
-    buffer_pool: Rc<RefCell<BufferPool>>,
+    buffer_pool: BufferPool,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<TupleDesc> {
@@ -51,7 +49,7 @@ pub fn tuple_desc_from_relation(
 
 /// Return the pg class tuple from the given relation name.
 pub fn get_pg_class_relation(
-    buffer_pool: Rc<RefCell<BufferPool>>,
+    buffer_pool: BufferPool,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<PgClass> {

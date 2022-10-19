@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fs, io, path::Path, rc::Rc};
+use std::{fs, io, path::Path};
 
 use tinydb::{
     catalog::pg_database,
@@ -23,14 +23,10 @@ fn test_regress() {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir to regress tests");
 
     // TODO: Make the buffer pool configurable via SQL.
-    let buffer = Rc::new(RefCell::new(BufferPool::new(
-        5,
-        StorageManager::new(&temp_dir.path()),
-    )));
+    let buffer = BufferPool::new(5, StorageManager::new(&temp_dir.path()));
 
     // Create a default tinydb database.
-    init_database(&mut buffer.borrow_mut(), &temp_dir.path())
-        .expect("Failed init default database");
+    init_database(&buffer, &temp_dir.path()).expect("Failed init default database");
     let config = ExecutorConfig { database: db_oid };
     let mut conn_executor = ConnectionExecutor::new(config, buffer);
 

@@ -15,7 +15,7 @@ use super::{pg_class::PgClass, pg_tablespace::GLOBALTABLESPACE_OID};
 
 /// Create a new cataloged heap relation.
 pub fn heap_create(
-    buffer: &mut BufferPool,
+    buffer: &BufferPool,
     tablespace: Oid,
     db_oid: &Oid,
     rel_name: &str,
@@ -43,7 +43,7 @@ pub fn heap_create(
 
 /// Registers the new relation's schema by adding tuples to pg_attribute.
 fn add_new_attribute_tuples(
-    buffer: &mut BufferPool,
+    buffer: &BufferPool,
     rel: &Relation,
     tupledesc: &TupleDesc,
 ) -> Result<()> {
@@ -68,7 +68,7 @@ fn add_new_attribute_tuples(
 /// empty the buffer pool is used to alloc a new page on pg_class file and initialize the default
 /// header values.
 fn add_new_relation_tuple(
-    buffer: &mut BufferPool,
+    buffer: &BufferPool,
     pg_class: &Relation,
     new_rel: &Relation,
 ) -> Result<()> {
@@ -96,7 +96,7 @@ fn add_new_relation_tuple(
 
 /// Initialize the default page header values on the given relation. The buffer pool is used to
 /// alloc a new page on relation.
-pub fn initialize_default_page_header(buffer: &mut BufferPool, rel: &Relation) -> Result<()> {
+pub fn initialize_default_page_header(buffer: &BufferPool, rel: &Relation) -> Result<()> {
     if buffer.size_of_relation(rel)? > 0 {
         // Page header already initialized.
         return Ok(());

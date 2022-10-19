@@ -2,7 +2,7 @@ pub mod encode;
 
 use encode::encode;
 
-use std::{cell::RefCell, io, mem::size_of, rc::Rc};
+use std::{io, mem::size_of};
 
 use anyhow::{bail, Result};
 use sqlparser::{
@@ -49,11 +49,11 @@ pub struct ExecutorConfig {
 pub struct ConnectionExecutor {
     config: ExecutorConfig,
 
-    buffer_pool: Rc<RefCell<BufferPool>>,
+    buffer_pool: BufferPool,
 }
 
 impl ConnectionExecutor {
-    pub fn new(config: ExecutorConfig, buffer_pool: Rc<RefCell<BufferPool>>) -> Self {
+    pub fn new(config: ExecutorConfig, buffer_pool: BufferPool) -> Self {
         Self {
             config,
             buffer_pool,
@@ -170,7 +170,7 @@ impl ConnectionExecutor {
                 }
 
                 heap_insert(
-                    &mut self.buffer_pool.borrow_mut(),
+                    &self.buffer_pool,
                     &rel,
                     &mut HeapTuple::from_datums(heap_values, &tuple_desc)?,
                 )?;
@@ -198,7 +198,7 @@ impl ConnectionExecutor {
         }
 
         heap_create(
-            &mut self.buffer_pool.borrow_mut(),
+            &mut self.buffer_pool,
             DEFAULTTABLESPACE_OID,
             &self.config.database,
             &name.0[0].to_string(),

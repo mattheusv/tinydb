@@ -1,8 +1,6 @@
-use std::cell::RefCell;
 use std::env;
 use std::io;
 use std::path::Path;
-use std::rc::Rc;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -52,13 +50,10 @@ fn main() {
 
     let data_dir = cwd.join(&flags.data_dir);
 
-    let buffer = Rc::new(RefCell::new(BufferPool::new(
-        120,
-        StorageManager::new(&data_dir),
-    )));
+    let buffer = BufferPool::new(120, StorageManager::new(&data_dir));
 
     if flags.init {
-        init_database(&mut buffer.borrow_mut(), &data_dir).expect("Failed init default database");
+        init_database(&buffer, &data_dir).expect("Failed init default database");
     }
 
     let mut rl = Editor::<()>::new();

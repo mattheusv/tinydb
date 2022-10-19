@@ -90,7 +90,62 @@ impl BufferDesc {
     }
 }
 
-pub struct BufferPool {
+/// Shared buffer pool manager interface used by almost all other database components.
+///
+/// It encapsulatates the BufferPoolState allowing multiple referances to it.
+///
+/// BufferPool is reference counted and clonning will just increase the reference counter.
+pub struct BufferPool(Rc<RefCell<BufferPoolState>>);
+
+impl BufferPool {
+    /// Create a new buffer pool with a given size.
+    pub fn new(size: usize, smgr: StorageManager) -> Self {
+        Self(Rc::new(RefCell::new(BufferPoolState::new(size, smgr))))
+    }
+
+    /// Returns the buffer number for the buffer containing the block read.
+    /// The returned buffer has been pinned.
+    pub fn fetch_buffer(&self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
+        self.0.borrow_mut().fetch_buffer(rel, page_num)
+    }
+
+    /// Physically write out a shared page to disk.
+    ///
+    /// Return error if the page could not be found in the page table, None otherwise.
+    pub fn flush_buffer(&self, buffer: &Buffer) -> Result<()> {
+        self.0.borrow_mut().flush_buffer(buffer)
+    }
+
+    /// Return the page contents from a buffer.
+    pub fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
+        self.0.borrow().get_page(buffer)
+    }
+
+    /// Allocate a new empty page block on disk on the given relation. If the buffer pool is at full capacity,
+    /// alloc_page will select a replacement victim to allocate the new page.
+    ///
+    /// The returned buffer is pinned and is already marked as holding the new page.
+    ///
+    /// Return error if no new pages could be created, otherwise the buffer.
+    pub fn alloc_buffer(&self, rel: &Relation) -> Result<Buffer> {
+        self.0.borrow_mut().alloc_buffer(rel)
+    }
+
+    /// Make the buffer available for replacement. The buffer is also unpined on lru if the ref count is 0.
+    ///
+    /// Return error if the buffer does not exists on buffer pool, None otherwise.
+    pub fn unpin_buffer(&self, buffer: Buffer, is_dirty: bool) -> Result<()> {
+        self.0.borrow_mut().unpin_buffer(buffer, is_dirty)
+    }
+
+    /// Return the number of pages of the given relation.
+    pub fn size_of_relation(&self, rel: &Relation) -> Result<u32> {
+        self.0.borrow_mut().size_of_relation(rel)
+    }
+}
+
+struct BufferPoolState {
+    /// Storage manager used to fetch pages from disk.
     smgr: StorageManager,
 
     /// Replacer used to find a page that can be removed from memory.
@@ -106,9 +161,9 @@ pub struct BufferPool {
     page_table: HashMap<BufferTag, Buffer>,
 }
 
-impl BufferPool {
-    /// Create a new buffer pool with a given size.
-    pub fn new(size: usize, smgr: StorageManager) -> Self {
+impl BufferPoolState {
+    /// Create a new buffer pool initializing the page array with the given size.
+    fn new(size: usize, smgr: StorageManager) -> Self {
         let mut free_list = Vec::with_capacity(size);
         let mut pages = Vec::with_capacity(size);
 
@@ -130,9 +185,8 @@ impl BufferPool {
         }
     }
 
-    /// Returns the buffer number for the buffer containing the block read.
-    /// The returned buffer has been pinned.
-    pub fn fetch_buffer(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
+    /// Return the given page number buffer, fetching from disk if it's not in memory.
+    fn fetch_buffer(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
         let buf_tag = BufferTag::new(page_num, rel);
         if let Some(buffer) = self.page_table.get(&buf_tag) {
             debug!(
@@ -183,10 +237,8 @@ impl BufferPool {
         }
     }
 
-    /// Physically write out a shared page to disk.
-    ///
-    /// Return error if the page could not be found in the page table, None otherwise.
-    pub fn flush_buffer(&mut self, buffer: &Buffer) -> Result<()> {
+    // Write the page of the given buffer out to disk
+    fn flush_buffer(&mut self, buffer: &Buffer) -> Result<()> {
         let buf_desc = self.get_buffer_descriptor(*buffer)?;
         let buf_desc = buf_desc.borrow();
         debug!(
@@ -205,18 +257,12 @@ impl BufferPool {
         Ok(())
     }
 
-    /// Return the page contents from a buffer.
-    pub fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
+    fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
         Ok(self.get_buffer_descriptor(*buffer)?.borrow().page.clone())
     }
 
-    /// Allocate a new empty page block on disk on the given relation. If the buffer pool is at full capacity,
-    /// alloc_page will select a replacement victim to allocate the new page.
-    ///
-    /// The returned buffer is pinned and is already marked as holding the new page.
-    ///
-    /// Return error if no new pages could be created, otherwise the buffer.
-    pub fn alloc_buffer(&mut self, rel: &Relation) -> Result<Buffer> {
+    /// Return a new allocated page buffer on the given relation. The buffer returned is pinned.
+    fn alloc_buffer(&mut self, rel: &Relation) -> Result<Buffer> {
         let page_num = self.smgr.extend(rel)?;
         debug!(
             "New page {} allocated for relation {}",
@@ -226,6 +272,7 @@ impl BufferPool {
         self.fetch_buffer(rel, page_num)
     }
 
+    /// Return a new free buffer from free list or victim if there is no more free buffers to use.
     fn new_free_buffer(&mut self) -> Result<Buffer> {
         assert!(
             self.page_table.len() < self.page_table.capacity(),
@@ -274,10 +321,7 @@ impl BufferPool {
         self.lru.pin(&buffer.id);
     }
 
-    /// Make the buffer available for replacement. The buffer is also unpined on lru if the ref count is 0.
-    ///
-    /// Return error if the buffer does not exists on buffer pool, None otherwise.
-    pub fn unpin_buffer(&mut self, buffer: Buffer, is_dirty: bool) -> Result<()> {
+    fn unpin_buffer(&mut self, buffer: Buffer, is_dirty: bool) -> Result<()> {
         let buf_desc = self.get_buffer_descriptor(buffer)?;
         let mut buf_desc = buf_desc.borrow_mut();
 
@@ -290,8 +334,6 @@ impl BufferPool {
         Ok(())
     }
 
-    /// Physically write out a all shared pages stored on buffer pool to disk.
-    //
     // TODO: call flush_buffer instead of duplicate the code.
     pub fn flush_all_buffers(&mut self) -> Result<()> {
         debug!("Flushing all buffers to disk");
@@ -314,16 +356,21 @@ impl BufferPool {
         Ok(())
     }
 
-    /// Return the number of pages of the given relation.
-    pub fn size_of_relation(&mut self, rel: &Relation) -> Result<u32> {
+    fn size_of_relation(&mut self, rel: &Relation) -> Result<u32> {
         self.smgr.size(rel)
     }
 }
 
-impl Drop for BufferPool {
+impl Drop for BufferPoolState {
     fn drop(&mut self) {
         self.flush_all_buffers()
             .expect("failed to flush all buffers to disk");
+    }
+}
+
+impl Clone for BufferPool {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 
