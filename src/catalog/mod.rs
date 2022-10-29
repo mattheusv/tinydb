@@ -35,9 +35,8 @@ pub fn tuple_desc_from_relation(
 
     let mut attributes = Vec::new();
 
-    let heap = HeapScanner::new(buffer_pool, &pg_attribute)?;
-    for tuple in heap {
-        let tuple = tuple?;
+    let mut heap = HeapScanner::new(buffer_pool, &pg_attribute)?;
+    while let Some(tuple) = heap.next_tuple()? {
         let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
         if attr.attrelid == pg_class_rel.oid {
             attributes.push(attr);
@@ -57,9 +56,8 @@ pub fn get_pg_class_relation(
 
     let mut pg_class_tuple = None;
 
-    let heap = HeapScanner::new(buffer_pool, &pg_class_rel)?;
-    for tuple in heap {
-        let tuple = tuple?;
+    let mut heap = HeapScanner::new(buffer_pool, &pg_class_rel)?;
+    while let Some(tuple) = heap.next_tuple()? {
         // Do nothing if the oid is already founded.
         if pg_class_tuple.is_none() {
             let pg_class = bincode::deserialize::<PgClass>(&tuple.data)?;

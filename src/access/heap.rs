@@ -25,15 +25,6 @@ pub fn heap_insert(buffer_pool: &BufferPool, rel: &Relation, tuple: &HeapTuple) 
     Ok(())
 }
 
-pub fn heap_scan(buffer_pool: BufferPool, rel: &Relation) -> Result<Vec<HeapTuple>> {
-    let mut tuples = Vec::new();
-    let heap = HeapScanner::new(buffer_pool, rel)?;
-    for tuple in heap {
-        tuples.push(tuple?);
-    }
-    Ok(tuples)
-}
-
 /// Heap tuple iterator iterate over all heap tuples of a given relation.
 ///
 /// HeapTupleIterator implements the Iterator trait.
@@ -51,21 +42,6 @@ pub struct HeapScanner {
     /// Current buffer used to scan. None if there is no more
     /// buffer to scan on page.
     buffer: Option<Buffer>,
-}
-
-impl Iterator for HeapScanner {
-    type Item = Result<HeapTuple>;
-
-    /// Wraps next_tuple into Iterator trait implementation.
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.next_tuple() {
-            Ok(tuple) => match tuple {
-                Some(tuple) => Some(Ok(tuple)),
-                None => None,
-            },
-            Err(err) => Some(Err(err)),
-        }
-    }
 }
 
 impl HeapScanner {
