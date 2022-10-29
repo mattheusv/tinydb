@@ -74,6 +74,19 @@ impl ConnectionExecutor {
         Ok(())
     }
 
+    pub fn run_pg(&self, command: &str) -> Result<RowDescriptor> {
+        let ast = Parser::parse_sql(&DIALECT, command)?;
+        if ast.len() > 1 {
+            bail!("Can not execute multiple statements in a single command");
+        }
+
+        let stmt = &ast[0];
+        match stmt {
+            Statement::Query(query) => self.exec_pg_select(query),
+            _ => bail!(SQLError::Unsupported(stmt.to_string())),
+        }
+    }
+
     fn exec_stmt<W>(&self, output: &mut W, stmt: &Statement) -> Result<()>
     where
         W: Write,
@@ -101,6 +114,13 @@ impl ConnectionExecutor {
         let tuple_table = executor.exec(&mut plan)?;
         self.print_relation_tuples(output, tuple_table)?;
         Ok(())
+    }
+
+    fn exec_pg_select(&self, query: &Box<ast::Query>) -> Result<RowDescriptor> {
+        let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
+        let executor = Executor::new();
+        let tuple_table = executor.exec(&mut plan)?;
+        Ok(RowDescriptor::from(tuple_table))
     }
 
     fn exec_insert(
@@ -320,5 +340,38 @@ impl ConnectionExecutor {
         writeln!(output, "{}", table)?;
 
         Ok(())
+    }
+}
+
+pub struct FieldDescription {
+    pub name: Vec<u8>,
+    pub table_oid: u32,
+    pub table_attribute_number: u16,
+    pub data_type_oid: u32,
+    pub data_type_size: i16,
+    pub type_modifier: i32,
+    pub format: i16,
+}
+
+pub struct RowDescriptor {
+    pub fields: Vec<FieldDescription>,
+}
+
+impl From<TupleTable> for RowDescriptor {
+    fn from(table: TupleTable) -> Self {
+        let mut fields = Vec::with_capacity(table.tuple_desc.attrs.len());
+        for attr in &table.tuple_desc.attrs {
+            fields.push(FieldDescription {
+                name: attr.attname.as_bytes().to_vec(),
+                table_oid: attr.attrelid as u32,
+                table_attribute_number: attr.attnum as u16,
+                data_type_oid: attr.atttypid as u32,
+                data_type_size: attr.attlen as i16,
+                type_modifier: -1,
+                format: 0,
+            })
+        }
+
+        Self { fields }
     }
 }

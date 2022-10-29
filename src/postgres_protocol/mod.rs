@@ -45,7 +45,10 @@ impl PostgresProtocol {
         let message = self.receive(socket)?;
         match message {
             FrontendMessage::Query(query) => {
-                println!("{}", query.query);
+                let row_desc = self.connection_executor.run_pg(&query.query)?;
+
+                row_desc.encode(socket)?;
+                CommandComplete::encode(socket)?;
                 ReadyForQuery::encode(socket)?;
 
                 Ok(())

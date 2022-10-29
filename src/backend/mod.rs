@@ -23,6 +23,7 @@ impl Backend {
             task::spawn_blocking(move || match backend.0.pgwire.serve(&mut socket) {
                 Ok(()) => {}
                 Err(err) => {
+                    println!("{}", err);
                     log::error!("Internal server error: {}", err)
                 }
             });
