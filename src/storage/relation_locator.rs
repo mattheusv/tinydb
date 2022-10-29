@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::{
     path::{Path, PathBuf},
-    rc::Rc,
+    sync::Arc,
 };
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     Oid, INVALID_OID,
 };
 
-pub type RelationLocator = Rc<RelationLocatorData>;
+pub type RelationLocator = Arc<RelationLocatorData>;
 
 /// RelFileLocator provide all that we need to know to physically access a relation.
 #[derive(Eq, PartialEq, Hash)]

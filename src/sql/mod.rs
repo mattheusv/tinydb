@@ -259,7 +259,7 @@ impl ConnectionExecutor {
         )?;
         match &plan.node_type {
             PlanNodeType::SeqScan { state } => {
-                write!(output, "Seq Scan on {}\n", state.relation.borrow().rel_name)?;
+                write!(output, "Seq Scan on {}\n", state.relation.rel_name)?;
             }
             PlanNodeType::Projection { .. } => {} // Don't show projection plan node
         };

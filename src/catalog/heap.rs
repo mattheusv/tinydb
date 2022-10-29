@@ -47,8 +47,6 @@ fn add_new_attribute_tuples(
     rel: &Relation,
     tupledesc: &TupleDesc,
 ) -> Result<()> {
-    let rel = rel.borrow();
-
     // Open pg_attribute relation to store the new relation attributes.
     let pg_attribute = access::open_pg_attribute_relation(&rel.locator.database);
 
@@ -72,8 +70,6 @@ fn add_new_relation_tuple(
     pg_class: &Relation,
     new_rel: &Relation,
 ) -> Result<()> {
-    let new_rel = new_rel.borrow();
-
     // Initialize default page header of pg_class relation if needed.
     if buffer.size_of_relation(pg_class)? == 0 {
         initialize_default_page_header(buffer, pg_class)?;
@@ -112,7 +108,7 @@ pub fn initialize_default_page_header(buffer: &BufferPool, rel: &Relation) -> Re
 
     debug!(
         "Initialized default pager header data for relation: {}",
-        rel.borrow().rel_name
+        rel.rel_name
     );
 
     Ok(())

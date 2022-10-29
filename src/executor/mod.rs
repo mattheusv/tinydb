@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::{bail, Result};
 
@@ -24,7 +24,7 @@ impl Executor {
         match &mut node.node_type {
             PlanNodeType::Projection { state } => {
                 let mut tuple_table = TupleTable {
-                    tuple_desc: Rc::new(TupleDesc {
+                    tuple_desc: Arc::new(TupleDesc {
                         attrs: state.projection.clone(),
                     }),
                     values: Vec::new(),
@@ -70,7 +70,7 @@ impl Executor {
 #[derive(Default)]
 pub struct TupleTable {
     /// Tuple descriptor of tuple table output values.
-    pub tuple_desc: Rc<TupleDesc>,
+    pub tuple_desc: Arc<TupleDesc>,
 
     /// Per row attribute values. Each Datums store the all attributes of a single
     /// row on the same order from tuple_desc.attrs.

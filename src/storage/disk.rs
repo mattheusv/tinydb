@@ -3,11 +3,10 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
-use std::io::{
-    prelude::{Read, Write},
-    Seek, SeekFrom,
-};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
 
 use crate::storage::{Page, PageNumber, PAGE_SIZE};
 
@@ -93,8 +92,8 @@ impl Default for Header {
 /// More specifically, pages are read into a MemPage structure.
 #[derive(Debug)]
 pub struct Disk {
-    file: File,
-    total_pages: u32,
+    file: Mutex<File>,
+    total_pages: AtomicU32,
 }
 
 impl Disk {
@@ -110,11 +109,11 @@ impl Disk {
             .read(true)
             .write(true)
             .open(filename)?;
-        let mut disk = Self {
-            file,
-            total_pages: 0,
+        let disk = Self {
+            file: Mutex::new(file),
+            total_pages: AtomicU32::new(0),
         };
-        disk.total_pages = disk.size()?;
+        disk.total_pages.store(disk.size()?, Ordering::Relaxed);
 
         if disk.is_empty()? {
             disk.initialize_header()?;
@@ -129,10 +128,11 @@ impl Disk {
     /// Reads a page from the disk, and updates the in-memory MemPage struct passed on
     /// page arg. Any changes done to a MemPage will not be effective until call the
     /// [write_page](Disk::write_page] with that MemPage.
-    pub fn read_page(&mut self, page_number: PageNumber, page: &mut Page) -> Result<()> {
+    pub fn read_page(&self, page_number: PageNumber, page: &mut Page) -> Result<()> {
+        let mut file = self.file.lock().unwrap();
         self.validate_page(page_number)?;
-        self.file.seek(SeekFrom::Start(self.offset(page_number)))?;
-        let count = self.file.read(page)?;
+        file.seek(SeekFrom::Start(self.offset(page_number)))?;
+        let count = file.read(page)?;
         debug!("Read {} bytes from page {}", count, page_number);
         Ok(())
     }
@@ -140,42 +140,46 @@ impl Disk {
     /// Write a page to file.
     ///
     /// Writes the in-memory copy of a page (stored in a MemPage struct) back to disk.
-    pub fn write_page(&mut self, number: PageNumber, page: &Page) -> Result<()> {
+    pub fn write_page(&self, number: PageNumber, page: &Page) -> Result<()> {
+        let mut file = self.file.lock().unwrap();
         self.validate_page(number)?;
-        self.file.seek(SeekFrom::Start(self.offset(number)))?;
-        let count = self.file.write(page)?;
+        file.seek(SeekFrom::Start(self.offset(number)))?;
+        let count = file.write(page)?;
         debug!("Wrote {} bytes to page {}", count, number);
         Ok(())
     }
 
     /// Allocate an extra page on the file and returns the page number
-    pub fn allocate_page(&mut self) -> Result<u32> {
-        self.total_pages += 1;
-        self.write_page(self.total_pages, &[0; PAGE_SIZE])?;
-        Ok(self.total_pages)
+    pub fn allocate_page(&self) -> Result<u32> {
+        let new_page = self.total_pages.fetch_add(1, Ordering::SeqCst) + 1;
+        self.write_page(new_page, &[0; PAGE_SIZE])?;
+        Ok(new_page)
     }
 
     /// Reads the header of database file and returns it in a byte array.
     /// Note that this function can be called even if the page size is unknown,
     /// since the chidb header always occupies the first 100 bytes of the file.
-    fn read_header(&mut self) -> Result<Header> {
-        self.file.seek(SeekFrom::Start(0))?;
+    fn read_header(&self) -> Result<Header> {
+        let mut file = self.file.lock().unwrap();
+        file.seek(SeekFrom::Start(0))?;
         let mut header = [0; HEADER_SIZE];
-        self.file.read(&mut header)?;
+        file.read(&mut header)?;
         Ok(Header::deserialize(&header)?)
     }
 
     /// Write the header on database file. Note that the write_header function will
     /// always override the current header data if exists.
-    fn write_header(&mut self, header: &Header) -> Result<()> {
-        self.file.seek(SeekFrom::Start(0))?;
-        self.file.write(&header.serialize()?)?;
+    fn write_header(&self, header: &Header) -> Result<()> {
+        let mut file = self.file.lock().unwrap();
+        file.seek(SeekFrom::Start(0))?;
+        file.write(&header.serialize()?)?;
         Ok(())
     }
 
     /// Computes the number of pages in a file.
     pub fn size(&self) -> Result<u32> {
-        let len = self.file.metadata()?.len();
+        let file = self.file.lock().unwrap();
+        let len = file.metadata()?.len();
         if len == 0 || len as usize - HEADER_SIZE == 0 {
             // If len is equal 0 means that the file is empty.
             // If len - HEADER_SIZE is equal 0 means that the
@@ -191,7 +195,7 @@ impl Disk {
 
     /// Check if a page number is valid to this database file buffer.
     fn validate_page(&self, page: PageNumber) -> Result<()> {
-        if page > self.total_pages || page <= 0 {
+        if page > self.total_pages.load(Ordering::Relaxed) || page <= 0 {
             bail!(Error::IncorrectPageNumber(page));
         }
         Ok(())
@@ -205,11 +209,12 @@ impl Disk {
 
     /// Check if file buffer is empty.
     fn is_empty(&self) -> Result<bool> {
-        Ok(self.file.metadata()?.len() == 0)
+        let file = self.file.lock().unwrap();
+        Ok(file.metadata()?.len() == 0)
     }
 
     /// Check if the header data is valid on disk.
-    fn validate_header(&mut self) -> Result<()> {
+    fn validate_header(&self) -> Result<()> {
         let header = self.read_header()?;
 
         // TODO: This is right? Seems not.
@@ -221,7 +226,7 @@ impl Disk {
     }
 
     /// Initialize the default header values.
-    fn initialize_header(&mut self) -> Result<()> {
+    fn initialize_header(&self) -> Result<()> {
         Ok(self.write_header(&Header::default())?)
     }
 }
@@ -233,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_first_page_not_override_header() -> Result<()> {
-        let mut disk = open_test_disk()?;
+        let disk = open_test_disk()?;
         let page_number = disk.allocate_page()?;
         let mem_page = [1; PAGE_SIZE];
         disk.write_page(page_number, &mem_page)?;
@@ -252,14 +257,14 @@ mod tests {
         let file = NamedTempFile::new()?;
         {
             // Open empty database file and create a page.
-            let mut disk = Disk::open(file.path())?;
+            let disk = Disk::open(file.path())?;
             let page_number = disk.allocate_page()?;
             let page_data = [0; PAGE_SIZE];
             disk.write_page(page_number, &page_data)?;
         }
 
         // Open an already existed database file and create a new page.
-        let mut disk = Disk::open(file.path())?;
+        let disk = Disk::open(file.path())?;
         let page_number = disk.allocate_page()?;
         let page_data = [0; PAGE_SIZE];
         disk.write_page(page_number, &page_data)?;
@@ -270,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_disk_file_page_size() -> Result<()> {
-        let mut disk = open_test_disk()?;
+        let disk = open_test_disk()?;
         let total_pages = 20;
 
         for i in 0..total_pages {
@@ -286,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_write_read_pages() -> Result<()> {
-        let mut disk = open_test_disk()?;
+        let disk = open_test_disk()?;
 
         let total_pages = 20;
 
@@ -308,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_read_invalid_page() -> Result<()> {
-        let mut disk = open_test_disk()?;
+        let disk = open_test_disk()?;
         let mut page = [0; PAGE_SIZE];
         let result = disk.read_page(1, &mut page);
 
@@ -333,7 +338,7 @@ mod tests {
 
     #[test]
     fn test_open_new_disk() -> Result<()> {
-        let mut disk = open_test_disk()?;
+        let disk = open_test_disk()?;
         let header = disk.read_header()?;
         assert_eq!(header, Header::default());
         Ok(())

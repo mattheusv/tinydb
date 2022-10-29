@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::sync::Arc;
 
 use crate::storage::{
     relation_locator::RelationLocator,
@@ -18,14 +18,14 @@ pub struct RelationData {
 }
 
 /// A mutable reference counter to an RelationData.
-pub type Relation = Rc<RefCell<RelationData>>;
+pub type Relation = Arc<RelationData>;
 
 impl RelationData {
     pub fn new(locator: RelationLocator, rel_name: &str) -> Self {
         Self {
             locator: locator.clone(),
             rel_name: rel_name.to_string(),
-            smgr: Rc::new(SMgrRelationData::new(&locator)),
+            smgr: Arc::new(SMgrRelationData::new(&locator)),
         }
     }
 }

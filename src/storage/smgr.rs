@@ -1,7 +1,8 @@
 use std::env;
 
 use std::path::Path;
-use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc};
+use std::sync::Arc;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::relation::Relation;
 
@@ -20,7 +21,7 @@ pub struct SMgrRelationData {
     locator: RelationLocator,
 }
 
-pub type SMgrRelation = Rc<SMgrRelationData>;
+pub type SMgrRelation = Arc<SMgrRelationData>;
 
 impl SMgrRelationData {
     /// Create a new storage manager relation for the given relation locator.
@@ -47,7 +48,7 @@ pub struct StorageManager {
     data_dir: PathBuf,
 
     /// Hashmap to store the disk page handler for each relation.
-    relation_smgr: HashMap<SMgrRelation, Rc<RefCell<Disk>>>,
+    relation_smgr: HashMap<SMgrRelation, Arc<Disk>>,
 }
 
 impl StorageManager {
@@ -62,46 +63,42 @@ impl StorageManager {
     /// Write the supplied page at the appropriate location.
     pub fn write(&mut self, rel: &Relation, page_number: PageNumber, page: &Page) -> Result<()> {
         let disk = self.smgr_from_relation(rel)?;
-        let mut disk = disk.borrow_mut();
         disk.write_page(page_number, page)
     }
 
     /// Read the specified block from the storage manager relation.
     pub fn read(&mut self, rel: &Relation, page_number: PageNumber, page: &mut Page) -> Result<()> {
         let disk = self.smgr_from_relation(rel)?;
-        let mut disk = disk.borrow_mut();
         disk.read_page(page_number, page)
     }
 
     /// Add a new page block to a file.
     pub fn extend(&mut self, rel: &Relation) -> Result<PageNumber> {
         let disk = self.smgr_from_relation(rel)?;
-        let mut disk = disk.borrow_mut();
         disk.allocate_page()
     }
 
     /// Computes the number of pages in a file.
     pub fn size(&mut self, rel: &Relation) -> Result<u32> {
-        self.smgr_from_relation(rel)?.borrow().size()
+        self.smgr_from_relation(rel)?.size()
     }
 
     /// Return a cached page handler for the given relation. If a page handler does not exists for
     /// relation, create a new one and cached it.
-    fn smgr_from_relation(&mut self, rel: &Relation) -> Result<Rc<RefCell<Disk>>> {
-        let smgr = &rel.borrow().smgr;
-        match self.relation_smgr.get(smgr) {
+    fn smgr_from_relation(&mut self, rel: &Relation) -> Result<Arc<Disk>> {
+        match self.relation_smgr.get(&rel.smgr) {
             Some(disk) => Ok(disk.clone()),
             None => {
                 let relpath = self.relation_path(rel)?;
-                let disk = Rc::new(RefCell::new(Disk::open(&self.data_dir.join(relpath))?));
-                self.relation_smgr.insert(smgr.clone(), disk.clone());
+                let disk = Arc::new(Disk::open(&self.data_dir.join(relpath))?);
+                self.relation_smgr.insert(rel.smgr.clone(), disk.clone());
                 Ok(disk)
             }
         }
     }
 
     fn relation_path(&self, rel: &Relation) -> Result<PathBuf> {
-        let locator = &rel.borrow().locator;
+        let locator = &rel.locator;
 
         let relpath = &relation_path(&locator.tablespace, &locator.database, &locator.oid)?;
         if env::current_dir()? == self.data_dir {

@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use core::fmt;
 use sqlparser::ast::{self, SetExpr, TableFactor};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::{
     access::{self, heap::HeapScanner, heaptuple::TupleDesc},
@@ -23,7 +23,7 @@ pub struct ProjectionState {
 
     /// Tuple descriptor from a relation heap tuple. The tuple descriptor
     /// attributes is in the same order that is stored on page tuple.
-    pub tuple_desc: Rc<TupleDesc>,
+    pub tuple_desc: Arc<TupleDesc>,
 
     pub child: Plan,
 }
@@ -31,7 +31,7 @@ pub struct ProjectionState {
 /// Sequential scan information needed by executor.
 pub struct SeqScanState {
     /// Tuple description of relation being used by planner executor.
-    pub tuple_desc: Rc<TupleDesc>,
+    pub tuple_desc: Arc<TupleDesc>,
 
     /// Current relation used by executor to operate.
     pub relation: Relation,
@@ -84,7 +84,7 @@ fn create_plan_from_select(
             let rel_name = name.0[0].to_string();
             let pg_class = catalog::get_pg_class_relation(buffer_pool.clone(), db_oid, &rel_name)?;
 
-            let tuple_desc = Rc::new(catalog::tuple_desc_from_relation(
+            let tuple_desc = Arc::new(catalog::tuple_desc_from_relation(
                 buffer_pool.clone(),
                 db_oid,
                 &rel_name,
@@ -143,7 +143,7 @@ fn create_seq_scan(
     db_oid: &Oid,
     rel_name: &str,
     pg_class_rel: &PgClass,
-    tuple_desc: Rc<TupleDesc>,
+    tuple_desc: Arc<TupleDesc>,
 ) -> Result<Plan> {
     let relation = access::open_relation(
         pg_class_rel.oid,

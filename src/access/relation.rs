@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::sync::Arc;
 
 use crate::{
     catalog::{
@@ -12,14 +12,14 @@ use crate::{
 
 /// Open any relation to the given db data path and db name and relation name.
 pub fn open_relation(oid: Oid, tablespace: Oid, db_oid: &Oid, rel_name: &str) -> Relation {
-    Rc::new(RefCell::new(RelationData::new(
-        Rc::new(RelationLocatorData {
+    Arc::new(RelationData::new(
+        Arc::new(RelationLocatorData {
             database: db_oid.clone(),
             tablespace,
             oid,
         }),
         rel_name,
-    )))
+    ))
 }
 
 /// Return the pg_class Relation.
