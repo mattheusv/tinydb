@@ -5,10 +5,12 @@ pub mod initdb;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 pub mod access;
+pub mod backend;
 pub mod catalog;
 pub mod executor;
 pub mod lru;
 pub mod planner;
+pub mod postgres_protocol;
 pub mod relation;
 pub mod sql;
 pub mod storage;

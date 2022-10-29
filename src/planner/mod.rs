@@ -57,8 +57,8 @@ pub struct Plan {
 
 impl Plan {
     /// Create a new plan for the given parsed query.
-    pub fn create(buffer_pool: BufferPool, db_oid: &Oid, query: Box<ast::Query>) -> Result<Plan> {
-        let plan = match query.body {
+    pub fn create(buffer_pool: BufferPool, db_oid: &Oid, query: &Box<ast::Query>) -> Result<Plan> {
+        let plan = match &query.body {
             SetExpr::Select(select) => create_plan_from_select(buffer_pool, db_oid, &select)?,
             _ => bail!(SQLError::Unsupported(query.body.to_string())),
         };

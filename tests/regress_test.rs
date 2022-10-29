@@ -28,7 +28,7 @@ fn test_regress() {
     // Create a default tinydb database.
     init_database(&buffer, &temp_dir.path()).expect("Failed init default database");
     let config = ExecutorConfig { database: db_oid };
-    let mut conn_executor = ConnectionExecutor::new(config, buffer);
+    let conn_executor = ConnectionExecutor::new(config, buffer);
 
     for sql_file in sql_entries {
         let mut output = Vec::new();

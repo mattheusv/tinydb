@@ -2,7 +2,7 @@ pub mod encode;
 
 use encode::encode;
 
-use std::{io, mem::size_of};
+use std::{io::Write, mem::size_of};
 
 use anyhow::{bail, Result};
 use sqlparser::{
@@ -61,17 +61,23 @@ impl ConnectionExecutor {
     }
 
     /// Run the give SQL command sending the output to the given output writer.
-    pub fn run(&mut self, output: &mut dyn io::Write, command: &str) -> Result<()> {
+    pub fn run<W>(&self, output: &mut W, command: &str) -> Result<()>
+    where
+        W: Write,
+    {
         let ast = Parser::parse_sql(&DIALECT, command)?;
 
         for stmt in ast {
-            self.exec_stmt(output, stmt)?;
+            self.exec_stmt(output, &stmt)?;
         }
 
         Ok(())
     }
 
-    fn exec_stmt(&mut self, output: &mut dyn io::Write, stmt: Statement) -> Result<()> {
+    fn exec_stmt<W>(&self, output: &mut W, stmt: &Statement) -> Result<()>
+    where
+        W: Write,
+    {
         match stmt {
             Statement::CreateTable { name, columns, .. } => self.exec_create_table(name, columns),
             Statement::Insert {
@@ -81,12 +87,15 @@ impl ConnectionExecutor {
                 ..
             } => self.exec_insert(table_name, columns, source),
             Statement::Query(query) => self.exec_select(output, query),
-            Statement::Explain { statement, .. } => self.exec_explain(output, *statement),
+            Statement::Explain { statement, .. } => self.exec_explain(output, statement),
             _ => bail!(SQLError::Unsupported(stmt.to_string())),
         }
     }
 
-    fn exec_select(&mut self, output: &mut dyn io::Write, query: Box<ast::Query>) -> Result<()> {
+    fn exec_select<W>(&self, output: &mut W, query: &Box<ast::Query>) -> Result<()>
+    where
+        W: Write,
+    {
         let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
         let executor = Executor::new();
         let tuple_table = executor.exec(&mut plan)?;
@@ -95,10 +104,10 @@ impl ConnectionExecutor {
     }
 
     fn exec_insert(
-        &mut self,
-        table_name: ast::ObjectName,
-        columns: Vec<ast::Ident>,
-        source: Box<ast::Query>,
+        &self,
+        table_name: &ast::ObjectName,
+        columns: &Vec<ast::Ident>,
+        source: &Box<ast::Query>,
     ) -> Result<()> {
         let rel_name = table_name.0[0].to_string();
         let pg_class_rel = catalog::get_pg_class_relation(
@@ -114,7 +123,7 @@ impl ConnectionExecutor {
             &rel_name,
         );
 
-        match source.body {
+        match &source.body {
             ast::SetExpr::Values(values) => {
                 let tuple_desc = catalog::tuple_desc_from_relation(
                     self.buffer_pool.clone(),
@@ -182,9 +191,9 @@ impl ConnectionExecutor {
     }
 
     fn exec_create_table(
-        &mut self,
-        name: ast::ObjectName,
-        columns: Vec<ast::ColumnDef>,
+        &self,
+        name: &ast::ObjectName,
+        columns: &Vec<ast::ColumnDef>,
     ) -> Result<()> {
         // Create a new unique oid to the new heap relation.
         let new_oid = catalog::new_relation_oid(&DEFAULTTABLESPACE_OID, &self.config.database)?;
@@ -198,7 +207,7 @@ impl ConnectionExecutor {
         }
 
         heap_create(
-            &mut self.buffer_pool,
+            &self.buffer_pool,
             DEFAULTTABLESPACE_OID,
             &self.config.database,
             &name.0[0].to_string(),
@@ -240,17 +249,23 @@ impl ConnectionExecutor {
         }
     }
 
-    fn exec_explain(&mut self, output: &mut dyn io::Write, stmt: Statement) -> Result<()> {
+    fn exec_explain<W>(&self, output: &mut W, stmt: &Statement) -> Result<()>
+    where
+        W: Write,
+    {
         match stmt {
             Statement::Query(query) => {
                 let plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
-                self.print_explain(&plan, output)
+                self.print_explain(output, &plan)
             }
             _ => bail!(SQLError::Unsupported(stmt.to_string())),
         }
     }
 
-    fn print_explain(&self, plan: &Plan, output: &mut dyn io::Write) -> Result<()> {
+    fn print_explain<W>(&self, output: &mut W, plan: &Plan) -> Result<()>
+    where
+        W: Write,
+    {
         write!(
             output,
             "        QUERY PLAN
@@ -267,11 +282,10 @@ impl ConnectionExecutor {
         Ok(())
     }
 
-    fn print_relation_tuples(
-        &self,
-        output: &mut dyn io::Write,
-        tuple_table: TupleTable,
-    ) -> Result<()> {
+    fn print_relation_tuples<W>(&self, output: &mut W, tuple_table: TupleTable) -> Result<()>
+    where
+        W: Write,
+    {
         let mut columns = Vec::new();
         let mut records = Vec::new();
 

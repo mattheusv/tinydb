@@ -66,7 +66,7 @@ fn main() {
     let config = ExecutorConfig {
         database: pg_database::TINYDB_OID,
     };
-    let mut conn_executor = ConnectionExecutor::new(config, buffer);
+    let conn_executor = ConnectionExecutor::new(config, buffer);
 
     println!("Connected at {} database", default_db_name);
 
