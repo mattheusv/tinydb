@@ -343,6 +343,7 @@ impl ConnectionExecutor {
     }
 }
 
+#[derive(Debug)]
 pub struct FieldDescription {
     pub name: Vec<u8>,
     pub table_oid: u32,
@@ -353,6 +354,7 @@ pub struct FieldDescription {
     pub format: i16,
 }
 
+#[derive(Debug)]
 pub struct RowDescriptor {
     pub fields: Vec<FieldDescription>,
 }

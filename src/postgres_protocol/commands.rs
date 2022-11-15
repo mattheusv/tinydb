@@ -5,6 +5,7 @@ use std::{
     io::{BufRead, Cursor, Write},
 };
 
+use anyhow::bail;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 
 use crate::sql::RowDescriptor;
@@ -38,9 +39,15 @@ pub const ROW_DESCRIPTION_TAG: u8 = b'T';
 pub const READY_FOR_QUERY_TAG: u8 = b'Z';
 
 #[derive(Debug)]
-pub enum FrontendMessage {
+pub enum Message {
     StartupMessage(StartupMessage),
     Query(Query),
+    ReadyForQuery,
+    CommandComplete,
+    RowDescriptor(RowDescriptor),
+    AuthenticationOk,
+    BackendKeyData,
+    ParameterStatus(ParameterStatus),
 }
 
 #[derive(Debug)]
@@ -48,33 +55,75 @@ pub struct Query {
     pub query: String,
 }
 
-impl Query {
-    pub fn decode<R>(decode_from: &mut R) -> anyhow::Result<FrontendMessage>
-    where
-        R: byteorder::ReadBytesExt,
-    {
-        let msg_len = decode_from.read_u32::<BigEndian>()?;
+pub fn decode<R>(decode_from: &mut R) -> anyhow::Result<Message>
+where
+    R: byteorder::ReadBytesExt,
+{
+    let msg_type = decode_from.read_u8()?;
 
-        // Exclude the msg_len when reading
-        let mut msg_body = vec![0; (msg_len as usize) - 4];
-        decode_from.read(&mut msg_body)?;
+    match msg_type {
+        b'Q' => {
+            let msg_len = decode_from.read_u32::<BigEndian>()?;
 
-        // Exclude the \0 at the end when parsing.
-        let _ = msg_body.pop();
-        let query = String::from_utf8(msg_body)?;
-        Ok(FrontendMessage::Query(Self { query }))
+            // Exclude the msg_len when reading
+            let mut msg_body = vec![0; (msg_len as usize) - 4];
+            decode_from.read(&mut msg_body)?;
+
+            // Exclude the \0 at the end when parsing.
+            let _ = msg_body.pop();
+            let query = String::from_utf8(msg_body)?;
+            Ok(Message::Query(Query { query }))
+        }
+        _ => anyhow::bail!("Message type {} not supported", msg_type),
     }
 }
 
-pub struct ReadyForQuery;
+pub fn encode<W>(encode_to: &mut W, message: Message) -> anyhow::Result<()>
+where
+    W: Write,
+{
+    match message {
+        Message::ReadyForQuery => {
+            encode_to.write(&[READY_FOR_QUERY_TAG, 0, 0, 0, 5, EMPTY_QUERY_RESPONSE_TAG])?;
+            Ok(())
+        }
+        Message::CommandComplete => {
+            let tag = "SELECT 0".as_bytes();
 
-impl ReadyForQuery {
-    pub fn encode<W>(encode_to: &mut W) -> anyhow::Result<()>
-    where
-        W: Write,
-    {
-        // encode BackendKeyData message
-        {
+            encode_to.write_u8(COMMAND_COMPLETE_TAG)?;
+            encode_to.write_i32::<BigEndian>((tag.len() as i32) + 5)?;
+            encode_to.write(&tag)?;
+            encode_to.write_u8(0)?;
+            Ok(())
+        }
+        Message::RowDescriptor(desc) => {
+            let mut field_values = Vec::new();
+
+            field_values.write_u16::<BigEndian>(desc.fields.len() as u16)?;
+            for field in &desc.fields {
+                field_values.write(&field.name)?;
+                field_values.write_u8(0)?;
+
+                field_values.write_u32::<BigEndian>(field.table_oid)?;
+                field_values.write_u16::<BigEndian>(field.table_attribute_number)?;
+                field_values.write_u32::<BigEndian>(field.data_type_oid)?;
+                field_values.write_i16::<BigEndian>(field.data_type_size)?;
+                field_values.write_i32::<BigEndian>(field.type_modifier)?;
+                field_values.write_i16::<BigEndian>(field.format)?;
+            }
+
+            encode_to.write_u8(ROW_DESCRIPTION_TAG)?;
+            encode_to.write_i32::<BigEndian>((field_values.len() as i32) + 4)?;
+            encode_to.write(&field_values)?;
+            Ok(())
+        }
+        Message::AuthenticationOk => {
+            encode_to.write(&[AUTHENTICATION_TAG])?;
+            encode_to.write_i32::<BigEndian>(8)?;
+            encode_to.write_u32::<BigEndian>(AUTH_TYPE_OK)?;
+            Ok(())
+        }
+        Message::BackendKeyData => {
             encode_to.write_u8(BACKEND_KEY_DATA_TAG)?;
             // message lenght
             encode_to.write_u32::<BigEndian>(12)?;
@@ -82,86 +131,30 @@ impl ReadyForQuery {
             encode_to.write_u32::<BigEndian>(42)?;
             // secret key
             encode_to.write_u32::<BigEndian>(12345)?;
+            Ok(())
         }
-
-        // Encode ParameterStatus message
-        {
-            let key = "TimeZone";
-            let value = "America/Sao_Paulo";
-
+        Message::ParameterStatus(status) => {
             let mut buf = Vec::new();
-            buf.write(key.as_bytes())?;
+            buf.write(status.key.as_bytes())?;
             buf.write_u8(0)?;
-            buf.write(value.as_bytes())?;
+            buf.write(status.value.as_bytes())?;
             buf.write_u8(0)?;
 
             encode_to.write_u8(PARAMETER_STATUS_TAG)?;
             encode_to.write_i32::<BigEndian>((buf.len() as i32) + 4)?;
             encode_to.write(&buf)?;
+            Ok(())
         }
-
-        encode_to.write(&[READY_FOR_QUERY_TAG, 0, 0, 0, 5, EMPTY_QUERY_RESPONSE_TAG])?;
-        Ok(())
-    }
-}
-
-pub struct CommandComplete;
-
-impl CommandComplete {
-    pub fn encode<W>(encode_to: &mut W) -> anyhow::Result<()>
-    where
-        W: Write,
-    {
-        let tag = "SELECT 0".as_bytes();
-
-        encode_to.write_u8(COMMAND_COMPLETE_TAG)?;
-        encode_to.write_i32::<BigEndian>((tag.len() as i32) + 5)?;
-        encode_to.write(&tag)?;
-        encode_to.write_u8(0)?;
-        Ok(())
-    }
-}
-
-impl RowDescriptor {
-    pub fn encode<W>(&self, encode_to: &mut W) -> anyhow::Result<()>
-    where
-        W: Write,
-    {
-        let mut field_values = Vec::new();
-
-        field_values.write_u16::<BigEndian>(self.fields.len() as u16)?;
-        for field in &self.fields {
-            field_values.write(&field.name)?;
-            field_values.write_u8(0)?;
-
-            field_values.write_u32::<BigEndian>(field.table_oid)?;
-            field_values.write_u16::<BigEndian>(field.table_attribute_number)?;
-            field_values.write_u32::<BigEndian>(field.data_type_oid)?;
-            field_values.write_i16::<BigEndian>(field.data_type_size)?;
-            field_values.write_i32::<BigEndian>(field.type_modifier)?;
-            field_values.write_i16::<BigEndian>(field.format)?;
+        Message::StartupMessage(_) | Message::Query(_) => {
+            bail!("can not encode message {:?}", message)
         }
-
-        encode_to.write_u8(ROW_DESCRIPTION_TAG)?;
-        encode_to.write_i32::<BigEndian>((field_values.len() as i32) + 4)?;
-        encode_to.write(&field_values)?;
-
-        Ok(())
     }
 }
 
-pub struct AuthenticationOk;
-
-impl AuthenticationOk {
-    pub fn encode<W>(encode_to: &mut W) -> anyhow::Result<()>
-    where
-        W: byteorder::WriteBytesExt,
-    {
-        encode_to.write(&[AUTHENTICATION_TAG])?;
-        encode_to.write_i32::<BigEndian>(8)?;
-        encode_to.write_u32::<BigEndian>(AUTH_TYPE_OK)?;
-        Ok(())
-    }
+#[derive(Debug)]
+pub struct ParameterStatus {
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(Debug)]
@@ -171,7 +164,7 @@ pub struct StartupMessage {
 }
 
 impl StartupMessage {
-    pub fn decode(src: &[u8]) -> anyhow::Result<FrontendMessage> {
+    pub fn decode(src: &[u8]) -> anyhow::Result<Message> {
         if src.len() < 4 {
             anyhow::bail!("startup message to short");
         }
@@ -197,7 +190,7 @@ impl StartupMessage {
             parameters.insert(key, value);
         }
 
-        Ok(FrontendMessage::StartupMessage(Self {
+        Ok(Message::StartupMessage(Self {
             protocol_version,
             parameters,
         }))

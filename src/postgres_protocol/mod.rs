@@ -7,11 +7,10 @@ use std::{
     net::TcpStream,
 };
 
-use crate::{postgres_protocol::commands::ReadyForQuery, sql::ConnectionExecutor};
+use crate::sql::ConnectionExecutor;
 
 use self::commands::{
-    AuthenticationOk, CommandComplete, FrontendMessage, Query, StartupMessage,
-    PROTOCOL_VERSION_NUMBER, SSL_REQUEST_NUMBER,
+    Message, ParameterStatus, StartupMessage, PROTOCOL_VERSION_NUMBER, SSL_REQUEST_NUMBER,
 };
 
 /// PostgresProtocol implements the Postgres wire protocol (version 3 of the protocol, implemented
@@ -42,14 +41,22 @@ impl PostgresProtocol {
     }
 
     fn handle_message(&self, socket: &mut TcpStream) -> anyhow::Result<()> {
-        let message = self.receive(socket)?;
+        let message = commands::decode(socket)?;
         match message {
-            FrontendMessage::Query(query) => {
+            Message::Query(query) => {
                 let row_desc = self.connection_executor.run_pg(&query.query)?;
 
-                row_desc.encode(socket)?;
-                CommandComplete::encode(socket)?;
-                ReadyForQuery::encode(socket)?;
+                commands::encode(socket, Message::RowDescriptor(row_desc))?;
+                commands::encode(socket, Message::CommandComplete)?;
+                commands::encode(socket, Message::BackendKeyData)?;
+                commands::encode(
+                    socket,
+                    Message::ParameterStatus(ParameterStatus {
+                        key: String::new(),
+                        value: String::new(),
+                    }),
+                )?;
+                commands::encode(socket, Message::ReadyForQuery)?;
 
                 Ok(())
             }
@@ -57,16 +64,7 @@ impl PostgresProtocol {
         }
     }
 
-    fn receive(&self, socket: &mut TcpStream) -> anyhow::Result<FrontendMessage> {
-        let msg_type = socket.read_u8()?;
-
-        match msg_type {
-            b'Q' => Ok(Query::decode(socket)?),
-            _ => anyhow::bail!("Message type {} not supported", msg_type),
-        }
-    }
-
-    fn receive_startup_message(&self, socket: &mut TcpStream) -> anyhow::Result<FrontendMessage> {
+    fn receive_startup_message(&self, socket: &mut TcpStream) -> anyhow::Result<Message> {
         let msg_size = socket.read_u32::<BigEndian>()? - 4;
 
         let mut buf = vec![0; msg_size as usize];
@@ -86,9 +84,9 @@ impl PostgresProtocol {
     fn handle_startup_message(&self, socket: &mut TcpStream) -> anyhow::Result<()> {
         let message = self.receive_startup_message(socket)?;
         match message {
-            FrontendMessage::StartupMessage { .. } => {
-                AuthenticationOk::encode(socket)?;
-                ReadyForQuery::encode(socket)?;
+            Message::StartupMessage { .. } => {
+                commands::encode(socket, Message::AuthenticationOk)?;
+                commands::encode(socket, Message::ReadyForQuery)?;
             }
             _ => anyhow::bail!("Unexpected message type to handle on startup"),
         }
