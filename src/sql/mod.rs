@@ -74,19 +74,6 @@ impl ConnectionExecutor {
         Ok(())
     }
 
-    pub fn run_pg(&self, command: &str) -> Result<RowDescriptor> {
-        let ast = Parser::parse_sql(&DIALECT, command)?;
-        if ast.len() > 1 {
-            bail!("Can not execute multiple statements in a single command");
-        }
-
-        let stmt = &ast[0];
-        match stmt {
-            Statement::Query(query) => self.exec_pg_select(query),
-            _ => bail!(SQLError::Unsupported(stmt.to_string())),
-        }
-    }
-
     fn exec_stmt<W>(&self, output: &mut W, stmt: &Statement) -> Result<()>
     where
         W: Write,
@@ -116,11 +103,11 @@ impl ConnectionExecutor {
         Ok(())
     }
 
-    fn exec_pg_select(&self, query: &Box<ast::Query>) -> Result<RowDescriptor> {
+    pub fn exec_pg_query(&self, query: &Box<ast::Query>) -> Result<PGResult> {
         let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
         let executor = Executor::new();
         let tuple_table = executor.exec(&mut plan)?;
-        Ok(RowDescriptor::from(tuple_table))
+        Ok(PGResult::from(tuple_table))
     }
 
     fn exec_insert(
@@ -343,25 +330,49 @@ impl ConnectionExecutor {
     }
 }
 
-#[derive(Debug)]
+/// Describe an attribute in a row.
+#[derive(Debug, Clone)]
 pub struct FieldDescription {
+    /// Name of field.
     pub name: Vec<u8>,
+
+    /// Oid of the table the field belongs to.
     pub table_oid: u32,
+
+    /// Number of attribute in a row.
     pub table_attribute_number: u16,
+
+    /// Oid of the type of attribute.
     pub data_type_oid: u32,
+
+    /// Fixed size of atribute value.
     pub data_type_size: i16,
+
+    // Fields required by postgres protocol, usually set to 0.
     pub type_modifier: i32,
     pub format: i16,
 }
 
-#[derive(Debug)]
+/// A descriptor for all attributes in a pg result row.
+#[derive(Debug, Clone)]
 pub struct RowDescriptor {
     pub fields: Vec<FieldDescription>,
 }
 
-impl From<TupleTable> for RowDescriptor {
+/// A query result contaning the data for all rows an a descriptor for each attribute in a row.
+#[derive(Debug)]
+pub struct PGResult {
+    /// Row attributes descriptor
+    pub desc: RowDescriptor,
+
+    /// All values returned from a query.
+    pub tuples: Vec<Datums>,
+}
+
+impl From<TupleTable> for PGResult {
     fn from(table: TupleTable) -> Self {
         let mut fields = Vec::with_capacity(table.tuple_desc.attrs.len());
+
         for attr in &table.tuple_desc.attrs {
             fields.push(FieldDescription {
                 name: attr.attname.as_bytes().to_vec(),
@@ -374,6 +385,9 @@ impl From<TupleTable> for RowDescriptor {
             })
         }
 
-        Self { fields }
+        Self {
+            desc: RowDescriptor { fields },
+            tuples: table.values,
+        }
     }
 }

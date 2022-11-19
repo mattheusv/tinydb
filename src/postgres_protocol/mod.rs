@@ -1,17 +1,21 @@
 mod commands;
 
+use anyhow::bail;
 use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
+use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
 
 use std::{
     io::{Read, Write},
     net::TcpStream,
 };
 
-use crate::sql::ConnectionExecutor;
+use crate::sql::{ConnectionExecutor, SQLError};
 
 use self::commands::{
     Message, ParameterStatus, StartupMessage, PROTOCOL_VERSION_NUMBER, SSL_REQUEST_NUMBER,
 };
+
+const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
 /// PostgresProtocol implements the Postgres wire protocol (version 3 of the protocol, implemented
 /// by Postgres 7.4 an later). serve() reads protocol messages, transforms them into SQL commands
@@ -44,19 +48,32 @@ impl PostgresProtocol {
         let message = commands::decode(socket)?;
         match message {
             Message::Query(query) => {
-                let row_desc = self.connection_executor.run_pg(&query.query)?;
+                let ast = Parser::parse_sql(&DIALECT, &query.query)?;
+                for stmt in ast {
+                    match stmt {
+                        Statement::Query(query) => {
+                            let result = self.connection_executor.exec_pg_query(&query)?;
+                            let rows = result.tuples.len();
 
-                commands::encode(socket, Message::RowDescriptor(row_desc))?;
-                commands::encode(socket, Message::CommandComplete)?;
-                commands::encode(socket, Message::BackendKeyData)?;
-                commands::encode(
-                    socket,
-                    Message::ParameterStatus(ParameterStatus {
-                        key: String::new(),
-                        value: String::new(),
-                    }),
-                )?;
-                commands::encode(socket, Message::ReadyForQuery)?;
+                            commands::encode(socket, Message::RowDescriptor(result.desc.clone()))?;
+                            commands::encode(socket, Message::DataRow(result))?;
+                            commands::encode(
+                                socket,
+                                Message::CommandComplete(String::from(format!("SELECT {}", rows))),
+                            )?;
+                            commands::encode(socket, Message::BackendKeyData)?;
+                            commands::encode(
+                                socket,
+                                Message::ParameterStatus(ParameterStatus {
+                                    key: String::new(),
+                                    value: String::new(),
+                                }),
+                            )?;
+                            commands::encode(socket, Message::ReadyForQuery)?;
+                        }
+                        _ => bail!(SQLError::Unsupported(stmt.to_string())),
+                    }
+                }
 
                 Ok(())
             }

@@ -8,7 +8,10 @@ use std::{
 use anyhow::bail;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 
-use crate::sql::RowDescriptor;
+use crate::{
+    sql::{encode, PGResult, RowDescriptor},
+    Oid,
+};
 
 pub const AUTH_TYPE_OK: u32 = 0;
 pub const PROTOCOL_VERSION_NUMBER: u32 = 196608; // 3.0
@@ -43,11 +46,12 @@ pub enum Message {
     StartupMessage(StartupMessage),
     Query(Query),
     ReadyForQuery,
-    CommandComplete,
+    CommandComplete(String),
     RowDescriptor(RowDescriptor),
     AuthenticationOk,
     BackendKeyData,
     ParameterStatus(ParameterStatus),
+    DataRow(PGResult),
 }
 
 #[derive(Debug)]
@@ -87,12 +91,10 @@ where
             encode_to.write(&[READY_FOR_QUERY_TAG, 0, 0, 0, 5, EMPTY_QUERY_RESPONSE_TAG])?;
             Ok(())
         }
-        Message::CommandComplete => {
-            let tag = "SELECT 0".as_bytes();
-
+        Message::CommandComplete(tag) => {
             encode_to.write_u8(COMMAND_COMPLETE_TAG)?;
             encode_to.write_i32::<BigEndian>((tag.len() as i32) + 5)?;
-            encode_to.write(&tag)?;
+            encode_to.write(&tag.as_bytes())?;
             encode_to.write_u8(0)?;
             Ok(())
         }
@@ -143,6 +145,41 @@ where
             encode_to.write_u8(PARAMETER_STATUS_TAG)?;
             encode_to.write_i32::<BigEndian>((buf.len() as i32) + 4)?;
             encode_to.write(&buf)?;
+            Ok(())
+        }
+        Message::DataRow(result) => {
+            let mut data_rows = Vec::new();
+
+            for row in result.tuples {
+                let row = row.iter();
+                let mut buf_row = Vec::new();
+
+                buf_row.write_u16::<BigEndian>(row.len() as u16)?;
+                for (attnum, datum) in row.enumerate() {
+                    match datum {
+                        Some(datum) => match &result.desc.fields.get(attnum) {
+                            Some(att_desc) => {
+                                let datum = encode::decode(datum, att_desc.data_type_oid as Oid)?;
+                                let datum = datum.as_bytes();
+                                buf_row.write_u32::<BigEndian>(datum.len() as u32)?;
+                                buf_row.write(datum)?;
+                            }
+                            None => {
+                                bail!("Can not find field desc for attnum {}", attnum)
+                            }
+                        },
+                        None => {
+                            buf_row.write_u32::<BigEndian>(0)?;
+                        }
+                    }
+                }
+                data_rows.write_u8(DATA_ROW_TAG)?;
+                data_rows.write_i32::<BigEndian>((buf_row.len() as i32) + 4)?;
+                data_rows.write(&buf_row)?;
+            }
+
+            encode_to.write(&data_rows)?;
+
             Ok(())
         }
         Message::StartupMessage(_) | Message::Query(_) => {
