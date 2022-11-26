@@ -197,7 +197,7 @@ impl ConnectionExecutor {
         Ok(())
     }
 
-    fn exec_create_table(
+    pub fn exec_create_table(
         &self,
         name: &ast::ObjectName,
         columns: &Vec<ast::ColumnDef>,

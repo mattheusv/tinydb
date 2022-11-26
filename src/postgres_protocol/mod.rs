@@ -1,115 +1,93 @@
-mod commands;
+pub mod commands;
 
-use anyhow::bail;
 use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
-use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
-
 use std::{
     io::{Read, Write},
     net::TcpStream,
 };
 
-use crate::sql::{ConnectionExecutor, SQLError};
+use anyhow::Result;
+
+use crate::sql::PGResult;
 
 use self::commands::{Message, StartupMessage, PROTOCOL_VERSION_NUMBER, SSL_REQUEST_NUMBER};
 
-const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
-
-/// PostgresProtocol implements the Postgres wire protocol (version 3 of the protocol, implemented
-/// by Postgres 7.4 an later). serve() reads protocol messages, transforms them into SQL commands
-/// that is seended to connection executor handler.
+/// Connection implements the Postgres wire protocol (version 3 of the protocol, implemented
+/// by Postgres 7.4 an later). receive() reads protocol messages, and return a Message type
+/// to be executed by connection handler.
 ///
-/// The connectior executor produces results for the SQL commands, which are delivered to the
-/// client.
-pub struct PostgresProtocol {
-    connection_executor: ConnectionExecutor,
+/// The connection handler execute the commands returned by receive() method and use the
+/// connection to send the appropriate messages back to the client.
+#[derive(Debug)]
+pub struct Connection {
+    // The `TcpStream` used to read and write data back and from the client.
+    stream: TcpStream,
 }
 
-impl PostgresProtocol {
-    pub fn new(connection_executor: ConnectionExecutor) -> Self {
-        Self {
-            connection_executor,
-        }
+impl Connection {
+    /// Create a new `Connection`, backed by `socket`. Read and write buffers
+    /// are initialized.
+    pub fn new(socket: TcpStream) -> Connection {
+        Connection { stream: socket }
     }
 
-    /// Continuously reads from the network stream connection and pushes execution instructions to
-    /// connection executor. The method returns when the pgwrite termination message is received.
-    pub fn serve(&self, socket: &mut TcpStream) -> anyhow::Result<()> {
-        self.handle_startup_message(socket)?;
-        log::info!("New connection established");
-
-        loop {
-            self.handle_message(socket)?;
-        }
+    /// Read a single message from tcp stream.
+    ///
+    /// The function waits until it has retrieved enough data to parse a message.
+    pub fn receive(&mut self) -> Result<Message> {
+        let message = commands::decode(&mut self.stream)?;
+        Ok(message)
     }
 
-    fn handle_message(&self, socket: &mut TcpStream) -> anyhow::Result<()> {
-        let message = commands::decode(socket)?;
-        match message {
-            Message::Query(query) => {
-                let ast = Parser::parse_sql(&DIALECT, &query.query)?;
-                for stmt in ast {
-                    match stmt {
-                        Statement::Query(query) => {
-                            let result = self.connection_executor.exec_pg_query(&query)?;
-                            let rows = result.tuples.len();
+    /// Send a query result back to the client.
+    pub fn send_result(&mut self, result: PGResult) -> Result<()> {
+        let rows = result.tuples.len();
 
-                            commands::encode(socket, Message::RowDescriptor(result.desc.clone()))?;
-                            commands::encode(socket, Message::DataRow(result))?;
-                            self.finish_message(socket, &format!("SELECT {}", rows))?;
-                        }
-                        Statement::Insert {
-                            table_name,
-                            columns,
-                            source,
-                            ..
-                        } => {
-                            self.connection_executor
-                                .exec_insert(&table_name, &columns, &source)?;
-                            self.finish_message(socket, &"INSERT")?;
-                        }
-                        _ => bail!(SQLError::Unsupported(stmt.to_string())),
-                    }
-                }
-
-                Ok(())
-            }
-            _ => anyhow::bail!("Unexpected message type to handle"),
-        }
-    }
-
-    fn finish_message(&self, socket: &mut TcpStream, tag: &str) -> anyhow::Result<()> {
-        commands::encode(socket, Message::CommandComplete(String::from(tag)))?;
-        commands::encode(socket, Message::ReadyForQuery)?;
+        commands::encode(
+            &mut self.stream,
+            Message::RowDescriptor(result.desc.clone()),
+        )?;
+        commands::encode(&mut self.stream, Message::DataRow(result))?;
+        self.command_complete(&format!("SELECT {}", rows))?;
         Ok(())
     }
 
-    fn receive_startup_message(&self, socket: &mut TcpStream) -> anyhow::Result<Message> {
-        let msg_size = socket.read_u32::<BigEndian>()? - 4;
+    /// Send to the client that the command returned by receive() is completed.
+    pub fn command_complete(&mut self, tag: &str) -> Result<()> {
+        commands::encode(
+            &mut self.stream,
+            Message::CommandComplete(String::from(tag)),
+        )?;
+        commands::encode(&mut self.stream, Message::ReadyForQuery)?;
+        Ok(())
+    }
+
+    pub fn handle_startup_message(&mut self) -> Result<()> {
+        let message = self.receive_startup_message()?;
+        match message {
+            Message::StartupMessage { .. } => {
+                commands::encode(&mut self.stream, Message::AuthenticationOk)?;
+                commands::encode(&mut self.stream, Message::ReadyForQuery)?;
+            }
+            _ => anyhow::bail!("Unexpected message type to handle on startup"),
+        }
+        Ok(())
+    }
+
+    fn receive_startup_message(&mut self) -> Result<Message> {
+        let msg_size = self.stream.read_u32::<BigEndian>()? - 4;
 
         let mut buf = vec![0; msg_size as usize];
-        socket.read(&mut buf)?;
+        self.stream.read(&mut buf)?;
         let code = BigEndian::read_u32(&buf);
 
         match code {
             PROTOCOL_VERSION_NUMBER => StartupMessage::decode(&buf),
             SSL_REQUEST_NUMBER => {
-                socket.write(&"N".as_bytes())?;
-                self.receive_startup_message(socket)
+                self.stream.write(&"N".as_bytes())?;
+                self.receive_startup_message()
             }
             _ => anyhow::bail!("Unexpected startup code: {}", code),
         }
-    }
-
-    fn handle_startup_message(&self, socket: &mut TcpStream) -> anyhow::Result<()> {
-        let message = self.receive_startup_message(socket)?;
-        match message {
-            Message::StartupMessage { .. } => {
-                commands::encode(socket, Message::AuthenticationOk)?;
-                commands::encode(socket, Message::ReadyForQuery)?;
-            }
-            _ => anyhow::bail!("Unexpected message type to handle on startup"),
-        }
-        Ok(())
     }
 }

@@ -1,9 +1,8 @@
-use std::{env, path::Path};
+use std::{env, net::TcpListener, sync::Arc};
 
 use tinydb::{
     backend::Backend,
     catalog::pg_database,
-    postgres_protocol::PostgresProtocol,
     sql::{ConnectionExecutor, ExecutorConfig},
     storage::{smgr::StorageManager, BufferPool},
 };
@@ -19,22 +18,19 @@ async fn main() {
 
     let cwd = env::current_dir().expect("Failed to get current working directory");
     let data_dir = cwd.join("data");
-    env::set_current_dir(Path::new(&data_dir)).unwrap();
+    env::set_current_dir(&data_dir).unwrap();
 
     let buffer = BufferPool::new(120, StorageManager::new(&data_dir));
-
-    env::set_current_dir(&data_dir).unwrap();
 
     let config = ExecutorConfig {
         database: pg_database::TINYDB_OID,
     };
-    let conn_executor = ConnectionExecutor::new(config, buffer);
-    let pgwire = PostgresProtocol::new(conn_executor);
+    let conn_executor = Arc::new(ConnectionExecutor::new(config, buffer));
 
-    let backend = Backend::new(pgwire);
+    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+    let backend = Backend::new(listener, conn_executor);
 
-    log::info!("Backend started");
-    if let Err(err) = backend.start().await {
+    if let Err(err) = backend.start() {
         eprintln!("Failed to start backend: {}", err);
     }
 }
