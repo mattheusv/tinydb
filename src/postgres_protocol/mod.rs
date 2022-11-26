@@ -11,9 +11,7 @@ use std::{
 
 use crate::sql::{ConnectionExecutor, SQLError};
 
-use self::commands::{
-    Message, ParameterStatus, StartupMessage, PROTOCOL_VERSION_NUMBER, SSL_REQUEST_NUMBER,
-};
+use self::commands::{Message, StartupMessage, PROTOCOL_VERSION_NUMBER, SSL_REQUEST_NUMBER};
 
 const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
@@ -61,14 +59,6 @@ impl PostgresProtocol {
                             commands::encode(
                                 socket,
                                 Message::CommandComplete(String::from(format!("SELECT {}", rows))),
-                            )?;
-                            commands::encode(socket, Message::BackendKeyData)?;
-                            commands::encode(
-                                socket,
-                                Message::ParameterStatus(ParameterStatus {
-                                    key: String::new(),
-                                    value: String::new(),
-                                }),
                             )?;
                             commands::encode(socket, Message::ReadyForQuery)?;
                         }
