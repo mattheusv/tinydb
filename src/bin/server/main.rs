@@ -12,6 +12,7 @@ use tinydb::{
 async fn main() {
     stderrlog::new()
         .module(module_path!())
+        .module("tinydb")
         .verbosity(3)
         .init()
         .unwrap();
@@ -31,6 +32,8 @@ async fn main() {
     let pgwire = PostgresProtocol::new(conn_executor);
 
     let backend = Backend::new(pgwire);
+
+    log::info!("Backend started");
     if let Err(err) = backend.start().await {
         eprintln!("Failed to start backend: {}", err);
     }

@@ -38,6 +38,7 @@ impl PostgresProtocol {
     /// connection executor. The method returns when the pgwrite termination message is received.
     pub fn serve(&self, socket: &mut TcpStream) -> anyhow::Result<()> {
         self.handle_startup_message(socket)?;
+        log::info!("New connection established");
 
         loop {
             self.handle_message(socket)?;
