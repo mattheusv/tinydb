@@ -56,11 +56,17 @@ impl PostgresProtocol {
 
                             commands::encode(socket, Message::RowDescriptor(result.desc.clone()))?;
                             commands::encode(socket, Message::DataRow(result))?;
-                            commands::encode(
-                                socket,
-                                Message::CommandComplete(String::from(format!("SELECT {}", rows))),
-                            )?;
-                            commands::encode(socket, Message::ReadyForQuery)?;
+                            self.finish_message(socket, &format!("SELECT {}", rows))?;
+                        }
+                        Statement::Insert {
+                            table_name,
+                            columns,
+                            source,
+                            ..
+                        } => {
+                            self.connection_executor
+                                .exec_insert(&table_name, &columns, &source)?;
+                            self.finish_message(socket, &"INSERT")?;
                         }
                         _ => bail!(SQLError::Unsupported(stmt.to_string())),
                     }
@@ -70,6 +76,12 @@ impl PostgresProtocol {
             }
             _ => anyhow::bail!("Unexpected message type to handle"),
         }
+    }
+
+    fn finish_message(&self, socket: &mut TcpStream, tag: &str) -> anyhow::Result<()> {
+        commands::encode(socket, Message::CommandComplete(String::from(tag)))?;
+        commands::encode(socket, Message::ReadyForQuery)?;
+        Ok(())
     }
 
     fn receive_startup_message(&self, socket: &mut TcpStream) -> anyhow::Result<Message> {

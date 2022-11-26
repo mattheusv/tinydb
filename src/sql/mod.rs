@@ -110,7 +110,7 @@ impl ConnectionExecutor {
         Ok(PGResult::from(tuple_table))
     }
 
-    fn exec_insert(
+    pub fn exec_insert(
         &self,
         table_name: &ast::ObjectName,
         columns: &Vec<ast::Ident>,
