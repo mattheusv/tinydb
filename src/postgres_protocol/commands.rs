@@ -5,7 +5,7 @@ use std::{
     io::{BufRead, Cursor},
 };
 
-use anyhow::bail;
+use anyhow::{bail, Error};
 use byteorder::{BigEndian, ByteOrder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -53,6 +53,7 @@ pub enum Message {
     BackendKeyData,
     ParameterStatus(ParameterStatus),
     DataRow(PGResult),
+    ErrorResponse(ErrorResponse),
 }
 
 #[derive(Debug)]
@@ -188,6 +189,21 @@ where
         Message::StartupMessage(_) | Message::Query(_) => {
             bail!("can not encode message {:?}", message)
         }
+        Message::ErrorResponse(err) => {
+            encode_to.write_u8(ERROR_RESPONSE_TAG).await?;
+            let mut buf = Vec::new();
+
+            buf.write_u8(b'M').await?;
+            buf.write(&err.error.to_string().as_bytes()).await?;
+            buf.write_u8(0).await?;
+
+            // Mark the the end of error response.
+            buf.write_u8(0).await?;
+
+            encode_to.write_u32((buf.len() + 4) as u32).await?;
+            encode_to.write(&buf).await?;
+            Ok(())
+        }
     }
 }
 
@@ -195,6 +211,11 @@ where
 pub struct ParameterStatus {
     pub key: String,
     pub value: String,
+}
+
+#[derive(Debug)]
+pub struct ErrorResponse {
+    pub error: Error,
 }
 
 #[derive(Debug)]

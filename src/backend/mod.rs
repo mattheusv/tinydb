@@ -54,37 +54,44 @@ impl Handler {
         log::info!("New connection accepted");
         loop {
             let msg = self.connection.receive().await?;
+            if let Err(err) = self.exec_message(msg).await {
+                self.connection.send_error(err).await?;
+                self.connection.ready_for_query().await?;
+            }
+        }
+    }
 
-            match msg {
-                Message::Query(query) => {
-                    let ast = Parser::parse_sql(&DIALECT, &query.query)?;
-                    for stmt in ast {
-                        match stmt {
-                            Statement::Query(query) => {
-                                let result = self.conn_executor.exec_pg_query(&query)?;
-                                self.connection.send_result(result).await?;
-                            }
-                            Statement::Insert {
-                                table_name,
-                                columns,
-                                source,
-                                ..
-                            } => {
-                                self.conn_executor
-                                    .exec_insert(&table_name, &columns, &source)?;
-                                self.connection.command_complete(&"INSERT").await?;
-                            }
-                            Statement::CreateTable { name, columns, .. } => {
-                                self.conn_executor.exec_create_table(&name, &columns)?;
-                                self.connection.command_complete(&"CREATE").await?;
-                            }
-                            _ => bail!(SQLError::Unsupported(stmt.to_string())),
+    async fn exec_message(&mut self, message: Message) -> Result<()> {
+        match message {
+            Message::Query(query) => {
+                let ast = Parser::parse_sql(&DIALECT, &query.query)?;
+                for stmt in ast {
+                    match stmt {
+                        Statement::Query(query) => {
+                            let result = self.conn_executor.exec_pg_query(&query)?;
+                            self.connection.send_result(result).await?;
                         }
+                        Statement::Insert {
+                            table_name,
+                            columns,
+                            source,
+                            ..
+                        } => {
+                            self.conn_executor
+                                .exec_insert(&table_name, &columns, &source)?;
+                            self.connection.command_complete(&"INSERT").await?;
+                        }
+                        Statement::CreateTable { name, columns, .. } => {
+                            self.conn_executor.exec_create_table(&name, &columns)?;
+                            self.connection.command_complete(&"CREATE").await?;
+                        }
+                        _ => bail!(SQLError::Unsupported(stmt.to_string())),
                     }
                 }
-                _ => anyhow::bail!("Unexpected message type to handle"),
-            };
-        }
+            }
+            _ => anyhow::bail!("Unexpected message type to handle"),
+        };
+        Ok(())
     }
 }
 

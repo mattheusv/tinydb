@@ -7,7 +7,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 
 use crate::sql::PGResult;
 
@@ -56,6 +56,16 @@ impl Connection {
         Ok(())
     }
 
+    /// Send the given error back to the client.
+    pub async fn send_error(&mut self, err: Error) -> Result<()> {
+        commands::encode(
+            &mut self.stream,
+            Message::ErrorResponse(commands::ErrorResponse { error: err }),
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Send to the client that the command returned by receive() is completed.
     pub async fn command_complete(&mut self, tag: &str) -> Result<()> {
         commands::encode(
@@ -63,6 +73,12 @@ impl Connection {
             Message::CommandComplete(String::from(tag)),
         )
         .await?;
+        self.ready_for_query().await?;
+        Ok(())
+    }
+
+    /// Send a ReadyForQuery to the client.
+    pub async fn ready_for_query(&mut self) -> Result<()> {
         commands::encode(&mut self.stream, Message::ReadyForQuery).await?;
         Ok(())
     }
