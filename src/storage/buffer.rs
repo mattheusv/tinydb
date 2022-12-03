@@ -341,7 +341,6 @@ impl BufferPoolState {
 
     // TODO: call flush_buffer instead of duplicate the code.
     pub fn flush_all_buffers(&mut self) -> Result<()> {
-        debug!("Flushing all buffers to disk");
         for buffer in self.page_table.values() {
             let buf_desc = self.get_buffer_descriptor(*buffer)?;
             let buf_desc = buf_desc.read().unwrap();
@@ -366,6 +365,7 @@ impl BufferPoolState {
 
 impl Drop for BufferPoolState {
     fn drop(&mut self) {
+        log::info!("Flushing all buffers to disk");
         self.flush_all_buffers()
             .expect("failed to flush all buffers to disk");
     }

@@ -1,15 +1,10 @@
-use std::{env, sync::Arc};
+use std::env;
 
-use tinydb::{
-    backend::Backend,
-    catalog::pg_database,
-    sql::{ConnectionExecutor, ExecutorConfig},
-    storage::{smgr::StorageManager, BufferPool},
-};
-use tokio::net::TcpListener;
+use tinydb::backend;
+use tokio::{net::TcpListener, signal};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     stderrlog::new()
         .module(module_path!())
         .module("tinydb")
@@ -21,17 +16,9 @@ async fn main() {
     let data_dir = cwd.join("data");
     env::set_current_dir(&data_dir).unwrap();
 
-    let buffer = BufferPool::new(120, StorageManager::new(&data_dir));
+    let listener = TcpListener::bind("127.0.0.1:6379").await?;
 
-    let config = ExecutorConfig {
-        database: pg_database::TINYDB_OID,
-    };
-    let conn_executor = Arc::new(ConnectionExecutor::new(config, buffer));
+    backend::start(&data_dir, listener, signal::ctrl_c()).await;
 
-    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
-    let backend = Backend::new(listener, conn_executor);
-
-    if let Err(err) = backend.start().await {
-        eprintln!("Failed to start backend: {}", err);
-    }
+    Ok(())
 }

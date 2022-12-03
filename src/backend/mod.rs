@@ -1,12 +1,14 @@
 use anyhow::{bail, Result};
 use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
-use std::sync::Arc;
+use std::{future::Future, path::PathBuf, sync::Arc};
 
 use tokio::{net::TcpListener, task};
 
 use crate::{
+    catalog::pg_database,
     postgres_protocol::{commands::Message, Connection},
-    sql::{ConnectionExecutor, SQLError},
+    sql::{ConnectionExecutor, ExecutorConfig, SQLError},
+    storage::{smgr::StorageManager, BufferPool},
 };
 
 /// Backend TCP listener. It includes a `start` method which performs the TCP listening and
@@ -114,6 +116,47 @@ impl Backend {
                     log::error!("connection serve error: {}", err);
                 }
             });
+        }
+    }
+}
+
+/// Start the tinydb backend server.
+///
+/// Accepts connections from the supplied listener. For each inbound connection,
+/// a task is spawned to handle that connection. The server runs until the
+/// `shutdown` future completes, at which point the server shuts down
+/// gracefully.
+///
+/// `tokio::signal::ctrl_c()` can be used as the `shutdown` argument. This will
+/// listen for a SIGINT signal.
+pub async fn start(data_dir: &PathBuf, listener: TcpListener, shutdown: impl Future) {
+    let buffer = BufferPool::new(120, StorageManager::new(&data_dir));
+
+    let config = ExecutorConfig {
+        database: pg_database::TINYDB_OID,
+    };
+    let conn_executor = Arc::new(ConnectionExecutor::new(config, buffer));
+
+    let backend = Backend::new(listener, conn_executor);
+
+    tokio::select! {
+        res = backend.start() => {
+            // If an error is received here, accepting connections from the TCP
+            // listener failed multiple times and the server is giving up and
+            // shutting down.
+            //
+            // Errors encountered when handling individual connections do not
+            // bubble up to this point.
+            if let Err(err) = res {
+                log::error!("Failed to accept connection: {}", err);
+            }
+        }
+        _ = shutdown => {
+            // Shutdown signal has been received.
+            //
+            // The buffer pool will be droped at this point that will force all
+            // in memory dirty pages to be written on disk.
+            log::info!("Shutting down the backend");
         }
     }
 }
