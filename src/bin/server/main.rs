@@ -1,4 +1,4 @@
-use std::{env, net::TcpListener, sync::Arc};
+use std::{env, sync::Arc};
 
 use tinydb::{
     backend::Backend,
@@ -6,6 +6,7 @@ use tinydb::{
     sql::{ConnectionExecutor, ExecutorConfig},
     storage::{smgr::StorageManager, BufferPool},
 };
+use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
@@ -27,10 +28,10 @@ async fn main() {
     };
     let conn_executor = Arc::new(ConnectionExecutor::new(config, buffer));
 
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
     let backend = Backend::new(listener, conn_executor);
 
-    if let Err(err) = backend.start() {
+    if let Err(err) = backend.start().await {
         eprintln!("Failed to start backend: {}", err);
     }
 }

@@ -2,11 +2,12 @@
 
 use std::{
     collections::HashMap,
-    io::{BufRead, Cursor, Write},
+    io::{BufRead, Cursor},
 };
 
 use anyhow::bail;
-use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
+use byteorder::{BigEndian, ByteOrder};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
     sql::{encode, PGResult, RowDescriptor},
@@ -59,19 +60,19 @@ pub struct Query {
     pub query: String,
 }
 
-pub fn decode<R>(decode_from: &mut R) -> anyhow::Result<Message>
+pub async fn decode<R>(decode_from: &mut R) -> anyhow::Result<Message>
 where
-    R: byteorder::ReadBytesExt,
+    R: AsyncReadExt + std::marker::Unpin,
 {
-    let msg_type = decode_from.read_u8()?;
+    let msg_type = decode_from.read_u8().await?;
 
     match msg_type {
         b'Q' => {
-            let msg_len = decode_from.read_u32::<BigEndian>()?;
+            let msg_len = decode_from.read_u32().await?;
 
             // Exclude the msg_len when reading
             let mut msg_body = vec![0; (msg_len as usize) - 4];
-            decode_from.read(&mut msg_body)?;
+            decode_from.read(&mut msg_body).await?;
 
             // Exclude the \0 at the end when parsing.
             let _ = msg_body.pop();
@@ -82,69 +83,71 @@ where
     }
 }
 
-pub fn encode<W>(encode_to: &mut W, message: Message) -> anyhow::Result<()>
+pub async fn encode<W>(encode_to: &mut W, message: Message) -> anyhow::Result<()>
 where
-    W: Write,
+    W: AsyncWriteExt + std::marker::Unpin,
 {
     match message {
         Message::ReadyForQuery => {
-            encode_to.write(&[READY_FOR_QUERY_TAG, 0, 0, 0, 5, EMPTY_QUERY_RESPONSE_TAG])?;
+            encode_to
+                .write(&[READY_FOR_QUERY_TAG, 0, 0, 0, 5, EMPTY_QUERY_RESPONSE_TAG])
+                .await?;
             Ok(())
         }
         Message::CommandComplete(tag) => {
-            encode_to.write_u8(COMMAND_COMPLETE_TAG)?;
-            encode_to.write_i32::<BigEndian>((tag.len() as i32) + 5)?;
-            encode_to.write(&tag.as_bytes())?;
-            encode_to.write_u8(0)?;
+            encode_to.write_u8(COMMAND_COMPLETE_TAG).await?;
+            encode_to.write_i32((tag.len() as i32) + 5).await?;
+            encode_to.write(&tag.as_bytes()).await?;
+            encode_to.write_u8(0).await?;
             Ok(())
         }
         Message::RowDescriptor(desc) => {
             let mut field_values = Vec::new();
 
-            field_values.write_u16::<BigEndian>(desc.fields.len() as u16)?;
+            field_values.write_u16(desc.fields.len() as u16).await?;
             for field in &desc.fields {
-                field_values.write(&field.name)?;
-                field_values.write_u8(0)?;
+                field_values.write(&field.name).await?;
+                field_values.write_u8(0).await?;
 
-                field_values.write_u32::<BigEndian>(field.table_oid)?;
-                field_values.write_u16::<BigEndian>(field.table_attribute_number)?;
-                field_values.write_u32::<BigEndian>(field.data_type_oid)?;
-                field_values.write_i16::<BigEndian>(field.data_type_size)?;
-                field_values.write_i32::<BigEndian>(field.type_modifier)?;
-                field_values.write_i16::<BigEndian>(field.format)?;
+                field_values.write_u32(field.table_oid).await?;
+                field_values.write_u16(field.table_attribute_number).await?;
+                field_values.write_u32(field.data_type_oid).await?;
+                field_values.write_i16(field.data_type_size).await?;
+                field_values.write_i32(field.type_modifier).await?;
+                field_values.write_i16(field.format).await?;
             }
 
-            encode_to.write_u8(ROW_DESCRIPTION_TAG)?;
-            encode_to.write_i32::<BigEndian>((field_values.len() as i32) + 4)?;
-            encode_to.write(&field_values)?;
+            encode_to.write_u8(ROW_DESCRIPTION_TAG).await?;
+            encode_to.write_i32((field_values.len() as i32) + 4).await?;
+            encode_to.write(&field_values).await?;
             Ok(())
         }
         Message::AuthenticationOk => {
-            encode_to.write(&[AUTHENTICATION_TAG])?;
-            encode_to.write_i32::<BigEndian>(8)?;
-            encode_to.write_u32::<BigEndian>(AUTH_TYPE_OK)?;
+            encode_to.write(&[AUTHENTICATION_TAG]).await?;
+            encode_to.write_i32(8).await?;
+            encode_to.write_u32(AUTH_TYPE_OK).await?;
             Ok(())
         }
         Message::BackendKeyData => {
-            encode_to.write_u8(BACKEND_KEY_DATA_TAG)?;
+            encode_to.write_u8(BACKEND_KEY_DATA_TAG).await?;
             // message lenght
-            encode_to.write_u32::<BigEndian>(12)?;
+            encode_to.write_u32(12).await?;
             // process id
-            encode_to.write_u32::<BigEndian>(42)?;
+            encode_to.write_u32(42).await?;
             // secret key
-            encode_to.write_u32::<BigEndian>(12345)?;
+            encode_to.write_u32(12345).await?;
             Ok(())
         }
         Message::ParameterStatus(status) => {
             let mut buf = Vec::new();
-            buf.write(status.key.as_bytes())?;
-            buf.write_u8(0)?;
-            buf.write(status.value.as_bytes())?;
-            buf.write_u8(0)?;
+            buf.write(status.key.as_bytes()).await?;
+            buf.write_u8(0).await?;
+            buf.write(status.value.as_bytes()).await?;
+            buf.write_u8(0).await?;
 
-            encode_to.write_u8(PARAMETER_STATUS_TAG)?;
-            encode_to.write_i32::<BigEndian>((buf.len() as i32) + 4)?;
-            encode_to.write(&buf)?;
+            encode_to.write_u8(PARAMETER_STATUS_TAG).await?;
+            encode_to.write_i32((buf.len() as i32) + 4).await?;
+            encode_to.write(&buf).await?;
             Ok(())
         }
         Message::DataRow(result) => {
@@ -154,31 +157,31 @@ where
                 let row = row.iter();
                 let mut buf_row = Vec::new();
 
-                buf_row.write_u16::<BigEndian>(row.len() as u16)?;
+                buf_row.write_u16(row.len() as u16).await?;
                 for (attnum, datum) in row.enumerate() {
                     match datum {
                         Some(datum) => match &result.desc.fields.get(attnum) {
                             Some(att_desc) => {
                                 let datum = encode::decode(datum, att_desc.data_type_oid as Oid)?;
                                 let datum = datum.as_bytes();
-                                buf_row.write_u32::<BigEndian>(datum.len() as u32)?;
-                                buf_row.write(datum)?;
+                                buf_row.write_u32(datum.len() as u32).await?;
+                                buf_row.write(datum).await?;
                             }
                             None => {
                                 bail!("Can not find field desc for attnum {}", attnum)
                             }
                         },
                         None => {
-                            buf_row.write_u32::<BigEndian>(0)?;
+                            buf_row.write_u32(0).await?;
                         }
                     }
                 }
-                data_rows.write_u8(DATA_ROW_TAG)?;
-                data_rows.write_i32::<BigEndian>((buf_row.len() as i32) + 4)?;
-                data_rows.write(&buf_row)?;
+                data_rows.write_u8(DATA_ROW_TAG).await?;
+                data_rows.write_i32((buf_row.len() as i32) + 4).await?;
+                data_rows.write(&buf_row).await?;
             }
 
-            encode_to.write(&data_rows)?;
+            encode_to.write(&data_rows).await?;
 
             Ok(())
         }

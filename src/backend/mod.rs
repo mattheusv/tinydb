@@ -1,8 +1,8 @@
 use anyhow::{bail, Result};
 use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
-use std::{net::TcpListener, sync::Arc};
+use std::sync::Arc;
 
-use tokio::task;
+use tokio::{net::TcpListener, task};
 
 use crate::{
     postgres_protocol::{commands::Message, Connection},
@@ -47,11 +47,11 @@ impl Handler {
     ///
     /// Before starting executing SQL commands the startup message is handled by
     /// `run` method.
-    fn run(&mut self) -> Result<()> {
-        self.connection.handle_startup_message()?;
+    async fn run(&mut self) -> Result<()> {
+        self.connection.handle_startup_message().await?;
         log::info!("New connection accepted");
         loop {
-            let msg = self.connection.receive()?;
+            let msg = self.connection.receive().await?;
 
             match msg {
                 Message::Query(query) => {
@@ -60,7 +60,7 @@ impl Handler {
                         match stmt {
                             Statement::Query(query) => {
                                 let result = self.conn_executor.exec_pg_query(&query)?;
-                                self.connection.send_result(result)?;
+                                self.connection.send_result(result).await?;
                             }
                             Statement::Insert {
                                 table_name,
@@ -70,11 +70,11 @@ impl Handler {
                             } => {
                                 self.conn_executor
                                     .exec_insert(&table_name, &columns, &source)?;
-                                self.connection.command_complete(&"INSERT")?;
+                                self.connection.command_complete(&"INSERT").await?;
                             }
                             Statement::CreateTable { name, columns, .. } => {
                                 self.conn_executor.exec_create_table(&name, &columns)?;
-                                self.connection.command_complete(&"CREATE")?;
+                                self.connection.command_complete(&"CREATE").await?;
                             }
                             _ => bail!(SQLError::Unsupported(stmt.to_string())),
                         }
@@ -100,17 +100,17 @@ impl Backend {
     ///
     /// Listen for inbound connections. For each inbound connection, spawn a
     /// task to process that connection.
-    pub fn start(&self) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
         log::info!("Backend started, accepting inbound connections");
         loop {
-            let (socket, _) = self.listener.accept()?;
+            let (socket, _) = self.listener.accept().await?;
 
             let mut handler = Handler {
                 connection: Connection::new(socket),
                 conn_executor: self.conn_executor.clone(),
             };
-            task::spawn_blocking(move || {
-                if let Err(err) = handler.run() {
+            task::spawn(async move {
+                if let Err(err) = handler.run().await {
                     log::error!("connection serve error: {}", err);
                 }
             });
