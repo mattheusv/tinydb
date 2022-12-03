@@ -46,6 +46,7 @@ pub const READY_FOR_QUERY_TAG: u8 = b'Z';
 pub enum Message {
     StartupMessage(StartupMessage),
     Query(Query),
+    Terminate,
     ReadyForQuery,
     CommandComplete(String),
     RowDescriptor(RowDescriptor),
@@ -80,6 +81,7 @@ where
             let query = String::from_utf8(msg_body)?;
             Ok(Message::Query(Query { query }))
         }
+        b'X' => Ok(Message::Terminate),
         _ => anyhow::bail!("Message type {} not supported", msg_type),
     }
 }
@@ -204,6 +206,7 @@ where
             encode_to.write(&buf).await?;
             Ok(())
         }
+        Message::Terminate => Ok(()),
     }
 }
 

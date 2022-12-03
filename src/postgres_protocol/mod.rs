@@ -1,5 +1,7 @@
 pub mod commands;
 
+use std::{io, net::SocketAddr};
+
 use async_recursion::async_recursion;
 use byteorder::{BigEndian, ByteOrder};
 use tokio::{
@@ -93,6 +95,11 @@ impl Connection {
             _ => anyhow::bail!("Unexpected message type to handle on startup"),
         }
         Ok(())
+    }
+
+    /// Returns the remote address that this stream is connected to.
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        self.stream.get_ref().peer_addr()
     }
 
     #[async_recursion]

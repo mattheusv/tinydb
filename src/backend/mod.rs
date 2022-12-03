@@ -54,6 +54,11 @@ impl Handler {
         log::info!("New connection accepted");
         loop {
             let msg = self.connection.receive().await?;
+            if let Message::Terminate = msg {
+                log::info!("Closing connection with {}", self.connection.peer_addr()?);
+                return Ok(());
+            }
+
             if let Err(err) = self.exec_message(msg).await {
                 self.connection.send_error(err).await?;
                 self.connection.ready_for_query().await?;
@@ -89,7 +94,7 @@ impl Handler {
                     }
                 }
             }
-            _ => anyhow::bail!("Unexpected message type to handle"),
+            _ => anyhow::bail!("Unexpected message type to execute"),
         };
         Ok(())
     }
