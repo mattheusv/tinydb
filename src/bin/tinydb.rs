@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     let flags = Flags::from_args();
 
     stderrlog::new()
-        .module("tinydb")
+        .module(module_path!())
         .quiet(flags.quiet)
         .verbosity(flags.verbose)
         .init()

@@ -73,7 +73,7 @@ impl Handler {
                 for stmt in ast {
                     match stmt {
                         Statement::Query(query) => {
-                            let result = self.conn_executor.exec_pg_query(&query)?;
+                            let result = self.conn_executor.exec_query(&query)?;
                             self.connection.send_result(result).await?;
                         }
                         Statement::Insert {

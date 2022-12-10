@@ -2,14 +2,10 @@ pub mod encode;
 
 use encode::encode;
 
-use std::{io::Write, mem::size_of};
+use std::mem::size_of;
 
 use anyhow::{bail, Result};
-use sqlparser::{
-    ast::{self, Statement},
-    dialect::PostgreSqlDialect,
-    parser::Parser,
-};
+use sqlparser::ast;
 
 use crate::{
     access::{
@@ -22,14 +18,10 @@ use crate::{
         pg_type,
     },
     executor::{Executor, TupleTable},
-    planner::{Plan, PlanNodeType},
+    planner::Plan,
     storage::BufferPool,
     Datums, Oid,
 };
-
-use self::encode::decode;
-
-const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
 
 /// Errors related with a SQL command
 #[derive(Debug, thiserror::Error)]
@@ -60,50 +52,7 @@ impl ConnectionExecutor {
         }
     }
 
-    /// Run the give SQL command sending the output to the given output writer.
-    pub fn run<W>(&self, output: &mut W, command: &str) -> Result<()>
-    where
-        W: Write,
-    {
-        let ast = Parser::parse_sql(&DIALECT, command)?;
-
-        for stmt in ast {
-            self.exec_stmt(output, &stmt)?;
-        }
-
-        Ok(())
-    }
-
-    fn exec_stmt<W>(&self, output: &mut W, stmt: &Statement) -> Result<()>
-    where
-        W: Write,
-    {
-        match stmt {
-            Statement::CreateTable { name, columns, .. } => self.exec_create_table(name, columns),
-            Statement::Insert {
-                table_name,
-                columns,
-                source,
-                ..
-            } => self.exec_insert(table_name, columns, source),
-            Statement::Query(query) => self.exec_select(output, query),
-            Statement::Explain { statement, .. } => self.exec_explain(output, statement),
-            _ => bail!(SQLError::Unsupported(stmt.to_string())),
-        }
-    }
-
-    fn exec_select<W>(&self, output: &mut W, query: &Box<ast::Query>) -> Result<()>
-    where
-        W: Write,
-    {
-        let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
-        let executor = Executor::new();
-        let tuple_table = executor.exec(&mut plan)?;
-        self.print_relation_tuples(output, tuple_table)?;
-        Ok(())
-    }
-
-    pub fn exec_pg_query(&self, query: &Box<ast::Query>) -> Result<PGResult> {
+    pub fn exec_query(&self, query: &Box<ast::Query>) -> Result<PGResult> {
         let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
         let executor = Executor::new();
         let tuple_table = executor.exec(&mut plan)?;
@@ -254,79 +203,6 @@ impl ConnectionExecutor {
             ast::DataType::Boolean => Ok((pg_type::BOOL_OID, size_of::<bool>() as i64)),
             _ => bail!("Not supported data type: {}", typ),
         }
-    }
-
-    fn exec_explain<W>(&self, output: &mut W, stmt: &Statement) -> Result<()>
-    where
-        W: Write,
-    {
-        match stmt {
-            Statement::Query(query) => {
-                let plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
-                self.print_explain(output, &plan)
-            }
-            _ => bail!(SQLError::Unsupported(stmt.to_string())),
-        }
-    }
-
-    fn print_explain<W>(&self, output: &mut W, plan: &Plan) -> Result<()>
-    where
-        W: Write,
-    {
-        write!(
-            output,
-            "        QUERY PLAN
------------------------------
-"
-        )?;
-        match &plan.node_type {
-            PlanNodeType::SeqScan { state } => {
-                write!(output, "Seq Scan on {}\n", state.relation.rel_name)?;
-            }
-            PlanNodeType::Projection { .. } => {} // Don't show projection plan node
-        };
-        write!(output, "\n")?;
-        Ok(())
-    }
-
-    fn print_relation_tuples<W>(&self, output: &mut W, tuple_table: TupleTable) -> Result<()>
-    where
-        W: Write,
-    {
-        let mut columns = Vec::new();
-        let mut records = Vec::new();
-
-        for attr in &tuple_table.tuple_desc.attrs {
-            columns.push(attr.attname.clone());
-        }
-
-        for slot in tuple_table.values {
-            let mut tuple_values = Vec::new();
-            for (attidx, attr) in tuple_table.tuple_desc.attrs.iter().enumerate() {
-                let datum = &slot[attidx];
-                match datum {
-                    Some(datum) => {
-                        tuple_values.push(decode(&datum, attr.atttypid)?);
-                    }
-                    None => {
-                        tuple_values.push(String::from("NULL"));
-                    }
-                }
-            }
-            records.push(tuple_values);
-        }
-
-        let mut table = tabled::builder::Builder::default().set_columns(columns);
-
-        for record in records {
-            table = table.add_record(record);
-        }
-
-        let table = table.build().with(tabled::Style::psql());
-
-        writeln!(output, "{}", table)?;
-
-        Ok(())
     }
 }
 

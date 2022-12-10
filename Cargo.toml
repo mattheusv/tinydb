@@ -9,10 +9,8 @@ stderrlog = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3"
 sqlparser = "0.17.0"
-rustyline = "9.1.2"
 anyhow = "1.0.57"
 thiserror = "1.0.31"
-tabled = "0.7.0"
 structopt = "0.3.26"
 tokio = { version = "1.21", features = ["full"] }
 bytes = "1.2.1"
@@ -22,7 +20,3 @@ async-recursion = "1.0.0"
 [dev-dependencies]
 tempfile = "3.2"
 rand = "0.8.5"
-
-[[bin]]
-name = "tinydb-server"
-path = "src/bin/server/main.rs"

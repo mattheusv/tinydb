@@ -76,11 +76,7 @@ async fn test_regress() -> anyhow::Result<()> {
 }
 
 fn build() -> anyhow::Result<()> {
-    let mut child = Command::new("cargo")
-        .arg("build")
-        .arg("--bin")
-        .arg("tinydb-server")
-        .spawn()?;
+    let mut child = Command::new("cargo").arg("build").spawn()?;
     let exit_status = child.wait()?;
     if !exit_status.success() {
         anyhow::bail!("failed to compile tinydb binary");
@@ -98,7 +94,7 @@ impl TinyDBCommand {
             env::current_dir()?
                 .join("target")
                 .join("debug")
-                .join("tinydb-server"),
+                .join("tinydb"),
         )
         .arg("--init")
         .arg("--data-dir")
