@@ -4,35 +4,15 @@ use std::path::Path;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use structopt::StructOpt;
 use tinydb::catalog::pg_database;
+use tinydb::cli::Flags;
 use tinydb::initdb::init_database;
 use tinydb::sql::ConnectionExecutor;
 use tinydb::sql::ExecutorConfig;
 use tinydb::storage::BufferPool;
 
-use structopt::StructOpt;
 use tinydb::storage::smgr::StorageManager;
-
-/// Command line arguments
-#[derive(StructOpt)]
-#[structopt()]
-struct Flags {
-    /// Silence all output
-    #[structopt(short = "q", long = "quiet")]
-    quiet: bool,
-
-    /// Initialize the database directory.
-    #[structopt(long = "init")]
-    init: bool,
-
-    /// Path to store database files.
-    #[structopt(long = "data-dir", default_value = "data")]
-    data_dir: String,
-
-    /// Verbose mode (-v, -vv, -vvv, etc)
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
-    verbose: usize,
-}
 
 fn main() {
     let flags = Flags::from_args();

@@ -1,13 +1,13 @@
 use std::ops::Index;
 use std::slice::Iter;
-
-pub mod initdb;
-
 use std::sync::atomic::{AtomicU64, Ordering};
+
 pub mod access;
 pub mod backend;
 pub mod catalog;
+pub mod cli;
 pub mod executor;
+pub mod initdb;
 pub mod lru;
 pub mod planner;
 pub mod postgres_protocol;
