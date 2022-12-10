@@ -7,7 +7,7 @@ use crate::{
     Oid,
 };
 
-use self::{pg_attribute::PgAttribute, pg_class::PgClass};
+use self::{pg_attribute::PgAttribute, pg_class::PgClass, pg_database::PgDatabase};
 
 pub mod heap;
 pub mod pg_attribute;
@@ -21,6 +21,9 @@ pub mod pg_type;
 pub enum Error {
     #[error("relation {0} does not exist")]
     RelationNotFound(String),
+
+    #[error("database {0} does not exist")]
+    DatabaseNotFound(String),
 }
 
 /// Return the tuple description of the given relation name.
@@ -71,6 +74,21 @@ pub fn get_pg_class_relation(
         Some(tuple) => Ok(tuple),
         None => bail!(Error::RelationNotFound(rel_name.to_string())),
     }
+}
+
+/// Return the database oid for the given database name.
+pub fn get_datase_oid(buffer_pool: BufferPool, dbname: &str) -> Result<Oid> {
+    let pg_database_rel = access::open_pg_database_relation();
+
+    let mut heap = HeapScanner::new(buffer_pool, &pg_database_rel)?;
+    while let Some(tuple) = heap.next_tuple()? {
+        let pg_database = bincode::deserialize::<PgDatabase>(&tuple.data)?;
+        if pg_database.datname == dbname {
+            return Ok(pg_database.oid);
+        }
+    }
+
+    bail!(Error::DatabaseNotFound(dbname.to_string()))
 }
 
 /// Genereate a new relation oid that is unique to the given the database.
