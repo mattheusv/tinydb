@@ -1,15 +1,13 @@
-use anyhow::{bail, Result};
-use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
-use std::{future::Future, path::PathBuf, sync::Arc};
-
-use tokio::{net::TcpListener, task};
-
 use crate::{
     catalog::pg_database,
     postgres_protocol::{commands::Message, Connection},
     sql::{ConnectionExecutor, ExecutorConfig, SQLError},
     storage::{smgr::StorageManager, BufferPool},
 };
+use anyhow::{bail, Result};
+use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
+use std::{future::Future, path::PathBuf};
+use tokio::{net::TcpListener, task};
 
 /// Backend TCP listener. It includes a `start` method which performs the TCP listening and
 /// initialization of per-connection state.
@@ -17,8 +15,8 @@ pub struct Backend {
     /// TCP listener supplied by the `start` caller.
     listener: TcpListener,
 
-    /// Shared connection executor, it execute incomming SQL comands.
-    conn_executor: Arc<ConnectionExecutor>,
+    /// Shared buffer pool used by all connection handlers.
+    buffer_pool: BufferPool,
 }
 
 /// Per-connection handler. Reads requests from `connection` and applies the
@@ -33,10 +31,10 @@ struct Handler {
     /// the byte level protocol parsing details encapsulated in `Connection`.
     connection: Connection,
 
-    /// Shared database connection executor.
+    /// Database connection executor. A connection executor for each connection handler.
     ///
     /// When a command is received from `connection`, it is executed with `conn_executor`.
-    conn_executor: Arc<ConnectionExecutor>,
+    conn_executor: ConnectionExecutor,
 }
 
 const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
@@ -101,12 +99,12 @@ impl Handler {
 }
 
 impl Backend {
-    /// Create a new backend using the given listener to accpet incoming tcp connections. The given
-    /// connection executor is shared with all handled connections.
-    pub fn new(listener: TcpListener, conn_executor: Arc<ConnectionExecutor>) -> Self {
+    /// Create a new backend using the given listener to accept incoming tcp connections. The given
+    /// buffer pool is shared with all connections handlers.
+    pub fn new(listener: TcpListener, buffer_pool: BufferPool) -> Self {
         Self {
             listener,
-            conn_executor,
+            buffer_pool,
         }
     }
 
@@ -119,9 +117,14 @@ impl Backend {
         loop {
             let (socket, _) = self.listener.accept().await?;
 
+            // TODO: Read the database from startup message parameters.
+            let config = ExecutorConfig {
+                database: pg_database::TINYDB_OID,
+            };
+
             let mut handler = Handler {
                 connection: Connection::new(socket),
-                conn_executor: self.conn_executor.clone(),
+                conn_executor: ConnectionExecutor::new(config, self.buffer_pool.clone()),
             };
             task::spawn(async move {
                 if let Err(err) = handler.run().await {
@@ -156,12 +159,7 @@ pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future
         StorageManager::new(&config.data_dir),
     );
 
-    let config = ExecutorConfig {
-        database: pg_database::TINYDB_OID,
-    };
-    let conn_executor = Arc::new(ConnectionExecutor::new(config, buffer));
-
-    let backend = Backend::new(listener, conn_executor);
+    let backend = Backend::new(listener, buffer);
 
     tokio::select! {
         res = backend.start() => {

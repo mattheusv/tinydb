@@ -1,12 +1,3 @@
-pub mod encode;
-
-use encode::encode;
-
-use std::mem::size_of;
-
-use anyhow::{bail, Result};
-use sqlparser::ast;
-
 use crate::{
     access::{
         self,
@@ -14,14 +5,20 @@ use crate::{
         heaptuple::{HeapTuple, TupleDesc},
     },
     catalog::{
-        self, heap::heap_create, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID,
-        pg_type,
+        self, get_datase_oid, heap::heap_create, pg_attribute::PgAttribute, pg_database,
+        pg_tablespace::DEFAULTTABLESPACE_OID, pg_type,
     },
     executor::{Executor, TupleTable},
     planner::Plan,
     storage::BufferPool,
     Datums, Oid,
 };
+use anyhow::{anyhow, bail, Result};
+use encode::encode;
+use sqlparser::ast;
+use std::{collections::HashMap, mem::size_of};
+
+pub mod encode;
 
 /// Errors related with a SQL command
 #[derive(Debug, thiserror::Error)]
@@ -39,8 +36,10 @@ pub struct ExecutorConfig {
 
 /// A connection executor is in charge of executing queries on a give database connection.
 pub struct ConnectionExecutor {
+    /// Configuration options for a database connection.
     config: ExecutorConfig,
 
+    /// Buffer pool shared with the query planner and executor.
     buffer_pool: BufferPool,
 }
 
@@ -226,6 +225,7 @@ pub struct FieldDescription {
 
     // Fields required by postgres protocol, usually set to 0.
     pub type_modifier: i32,
+
     pub format: i16,
 }
 
