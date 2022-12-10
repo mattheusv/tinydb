@@ -132,6 +132,15 @@ impl Backend {
     }
 }
 
+/// Backend server configuration options.
+pub struct Config {
+    /// Absolute path to PGDATA directory.
+    pub data_dir: PathBuf,
+
+    /// Size of buffer pool.
+    pub buffer_pool_size: usize,
+}
+
 /// Start the tinydb backend server.
 ///
 /// Accepts connections from the supplied listener. For each inbound connection,
@@ -141,8 +150,11 @@ impl Backend {
 ///
 /// `tokio::signal::ctrl_c()` can be used as the `shutdown` argument. This will
 /// listen for a SIGINT signal.
-pub async fn start(data_dir: &PathBuf, listener: TcpListener, shutdown: impl Future) {
-    let buffer = BufferPool::new(120, StorageManager::new(&data_dir));
+pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future) {
+    let buffer = BufferPool::new(
+        config.buffer_pool_size,
+        StorageManager::new(&config.data_dir),
+    );
 
     let config = ExecutorConfig {
         database: pg_database::TINYDB_OID,

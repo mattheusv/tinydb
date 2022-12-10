@@ -18,7 +18,12 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = TcpListener::bind("127.0.0.1:6379").await?;
 
-    backend::start(&data_dir, listener, signal::ctrl_c()).await;
+    let config = backend::Config {
+        data_dir,
+        buffer_pool_size: 120,
+    };
+
+    backend::start(&config, listener, signal::ctrl_c()).await;
 
     Ok(())
 }
