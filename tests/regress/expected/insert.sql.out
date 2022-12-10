@@ -1,72 +1,91 @@
 create table t(a int, b int, c int);
+CREATE
 insert into t(a, b, c) values(10, 20, 30);
+INSERT
 insert into t(a, c) values(40, 50);
+INSERT
 insert into t(b) values(60);
+INSERT
 insert into t values (42, 62, 82);
+INSERT
 select * from t;
-  a   |  b   |  c   
-------+------+------
-  10  |  20  |  30  
-  40  | NULL |  50  
- NULL |  60  | NULL 
-  42  |  62  |  82  
+ a  | b  | c  
+----+----+----
+ 10 | 20 | 30
+ 40 |    | 50
+    | 60 |   
+ 42 | 62 | 82
+(4 rows)
 
 create table t2(a int, b varchar, c int);
+CREATE
 insert into t2(a, b, c) values(1, 'abc', 2);
+INSERT
 insert into t2(b) values('def');
+INSERT
 insert into t2(a) values(3);
+INSERT
 insert into t2(c) values(4);
+INSERT
 insert into t2(b, c, a) values('inverse column order', 70, 42);
+INSERT
 select * from t2;
-  a   |          b           |  c   
-------+----------------------+------
-  1   |         abc          |  2   
- NULL |         def          | NULL 
-  3   |         NULL         | NULL 
- NULL |         NULL         |  4   
-  42  | inverse column order |  70  
+ a  |          b           | c  
+----+----------------------+----
+  1 | abc                  |  2
+    | def                  |   
+  3 |                      |   
+    |                      |  4
+ 42 | inverse column order | 70
+(5 rows)
 
 create table t3(a boolean, b boolean);
+CREATE
 insert into t3(a, b) values (true, false);
+INSERT
 select * from t3;
   a   |   b   
 ------+-------
- true | false 
+ true | false
+(1 row)
 
--- Test the projection behaviour specifing the columns
 select b from t2;
           b           
 ----------------------
-         abc          
-         def          
-         NULL         
-         NULL         
- inverse column order 
+ abc
+ def
+ 
+ 
+ inverse column order
+(5 rows)
 
 select b, a from t2;
-          b           |  a   
-----------------------+------
-         abc          |  1   
-         def          | NULL 
-         NULL         |  3   
-         NULL         | NULL 
- inverse column order |  42  
+          b           | a  
+----------------------+----
+ abc                  |  1
+ def                  |   
+                      |  3
+                      |   
+ inverse column order | 42
+(5 rows)
 
 select c, * from t2;
-  c   |  a   |          b           |  c   
-------+------+----------------------+------
-  2   |  1   |         abc          |  2   
- NULL | NULL |         def          | NULL 
- NULL |  3   |         NULL         | NULL 
-  4   | NULL |         NULL         |  4   
-  70  |  42  | inverse column order |  70  
+ c  | a  |          b           | c  
+----+----+----------------------+----
+  2 |  1 | abc                  |  2
+    |    | def                  |   
+    |  3 |                      |   
+  4 |    |                      |  4
+ 70 | 42 | inverse column order | 70
+(5 rows)
 
 select a, c from t2;
-  a   |  c   
-------+------
-  1   |  2   
- NULL | NULL 
-  3   | NULL 
- NULL |  4   
-  42  |  70  
+ a  | c  
+----+----
+  1 |  2
+    |   
+  3 |   
+    |  4
+ 42 | 70
+(5 rows)
 
