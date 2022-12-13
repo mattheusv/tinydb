@@ -1,12 +1,12 @@
 use crate::{
-    catalog::pg_database,
+    catalog::get_datase_oid,
     postgres_protocol::{commands::Message, Connection},
     sql::{ConnectionExecutor, ExecutorConfig, SQLError},
     storage::{smgr::StorageManager, BufferPool},
 };
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
-use std::{future::Future, path::PathBuf};
+use std::{collections::HashMap, future::Future, path::PathBuf};
 use tokio::{net::TcpListener, task};
 
 /// Backend TCP listener. It includes a `start` method which performs the TCP listening and
@@ -48,7 +48,6 @@ impl Handler {
     /// Before starting executing SQL commands the startup message is handled by
     /// `run` method.
     async fn run(&mut self) -> Result<()> {
-        self.connection.handle_startup_message().await?;
         log::info!("New connection accepted");
         loop {
             let msg = self.connection.receive().await?;
@@ -117,20 +116,33 @@ impl Backend {
         loop {
             let (socket, _) = self.listener.accept().await?;
 
-            // TODO: Read the database from startup message parameters.
-            let config = ExecutorConfig {
-                database: pg_database::TINYDB_OID,
-            };
+            let mut connection = Connection::new(socket);
 
-            let mut handler = Handler {
-                connection: Connection::new(socket),
-                conn_executor: ConnectionExecutor::new(config, self.buffer_pool.clone()),
-            };
-            task::spawn(async move {
-                if let Err(err) = handler.run().await {
-                    log::error!("connection serve error: {}", err);
+            let startup_message = connection.startup_message().await?;
+
+            match executor_config_from_startup_parameters(
+                self.buffer_pool.clone(),
+                startup_message.parameters,
+            ) {
+                Ok(config) => {
+                    connection.send_authentication_ok().await?;
+
+                    let mut handler = Handler {
+                        connection,
+                        conn_executor: ConnectionExecutor::new(config, self.buffer_pool.clone()),
+                    };
+
+                    task::spawn(async move {
+                        if let Err(err) = handler.run().await {
+                            log::error!("connection serve error: {}", err);
+                        }
+                    });
                 }
-            });
+                Err(err) => {
+                    log::error!("Failed to authenticate: {}", err);
+                    connection.send_error(err).await?;
+                }
+            }
         }
     }
 }
@@ -181,4 +193,23 @@ pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future
             log::info!("Shutting down the backend");
         }
     }
+}
+
+/// Return the connection executor configuration for the given map of connection parameters.
+///
+/// The database name is read from the given parameters and the respective OID is searched on
+/// database catalog, an error is returned if the database don't exists.
+///
+// TODO: Make this HashMap of connection parameters into a struct.
+fn executor_config_from_startup_parameters(
+    buffer_pool: BufferPool,
+    parameters: HashMap<String, String>,
+) -> Result<ExecutorConfig> {
+    let dbname = parameters
+        .get("database")
+        .ok_or_else(|| anyhow!("database name does not exists on connection parameters",))?;
+
+    let dboid = get_datase_oid(buffer_pool, dbname)?;
+
+    Ok(ExecutorConfig { database: dboid })
 }

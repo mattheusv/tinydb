@@ -51,6 +51,8 @@ async fn test_regress() -> anyhow::Result<()> {
                 .arg("-p")
                 .arg("6379")
                 .arg("-X")
+                .arg("-d")
+                .arg("tinydb")
                 .arg("-c")
                 .arg(sql)
                 .output()?;

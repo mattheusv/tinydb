@@ -5,18 +5,18 @@ use crate::{
         heaptuple::{HeapTuple, TupleDesc},
     },
     catalog::{
-        self, get_datase_oid, heap::heap_create, pg_attribute::PgAttribute, pg_database,
-        pg_tablespace::DEFAULTTABLESPACE_OID, pg_type,
+        self, heap::heap_create, pg_attribute::PgAttribute, pg_tablespace::DEFAULTTABLESPACE_OID,
+        pg_type,
     },
     executor::{Executor, TupleTable},
     planner::Plan,
     storage::BufferPool,
     Datums, Oid,
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use encode::encode;
 use sqlparser::ast;
-use std::{collections::HashMap, mem::size_of};
+use std::mem::size_of;
 
 pub mod encode;
 

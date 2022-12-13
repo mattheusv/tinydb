@@ -228,7 +228,7 @@ pub struct StartupMessage {
 }
 
 impl StartupMessage {
-    pub fn decode(src: &[u8]) -> anyhow::Result<Message> {
+    pub fn decode(src: &[u8]) -> anyhow::Result<Self> {
         if src.len() < 4 {
             anyhow::bail!("startup message to short");
         }
@@ -245,18 +245,20 @@ impl StartupMessage {
                 break;
             }
 
+            let _ = buf.pop(); // Remove \0
             let key = String::from_utf8(buf)?;
 
             let mut buf = Vec::new();
             cursor.read_until(0, &mut buf)?;
+            let _ = buf.pop(); // Remove \0
             let value = String::from_utf8(buf)?;
 
             parameters.insert(key, value);
         }
 
-        Ok(Message::StartupMessage(Self {
+        Ok(Self {
             protocol_version,
             parameters,
-        }))
+        })
     }
 }

@@ -85,25 +85,9 @@ impl Connection {
         Ok(())
     }
 
-    pub async fn handle_startup_message(&mut self) -> Result<()> {
-        let message = self.receive_startup_message().await?;
-        match message {
-            Message::StartupMessage { .. } => {
-                commands::encode(&mut self.stream, Message::AuthenticationOk).await?;
-                commands::encode(&mut self.stream, Message::ReadyForQuery).await?;
-            }
-            _ => anyhow::bail!("Unexpected message type to handle on startup"),
-        }
-        Ok(())
-    }
-
-    /// Returns the remote address that this stream is connected to.
-    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.stream.get_ref().peer_addr()
-    }
-
+    /// Return the startup message from the client.
     #[async_recursion]
-    async fn receive_startup_message(&mut self) -> Result<Message> {
+    pub async fn startup_message(&mut self) -> Result<StartupMessage> {
         let msg_size = self.stream.read_u32().await? - 4;
 
         let mut buf = vec![0; msg_size as usize];
@@ -114,9 +98,21 @@ impl Connection {
             PROTOCOL_VERSION_NUMBER => StartupMessage::decode(&buf),
             SSL_REQUEST_NUMBER => {
                 self.stream.write(&"N".as_bytes()).await?;
-                self.receive_startup_message().await
+                self.startup_message().await
             }
             _ => anyhow::bail!("Unexpected startup code: {}", code),
         }
+    }
+
+    /// Send an AuthenticationOk with a ReadForQuery command back to the client.
+    pub async fn send_authentication_ok(&mut self) -> Result<()> {
+        commands::encode(&mut self.stream, Message::AuthenticationOk).await?;
+        self.ready_for_query().await?;
+        Ok(())
+    }
+
+    /// Returns the remote address that this stream is connected to.
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        self.stream.get_ref().peer_addr()
     }
 }
