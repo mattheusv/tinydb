@@ -365,7 +365,7 @@ impl BufferPoolState {
 
 impl Drop for BufferPoolState {
     fn drop(&mut self) {
-        log::info!("Flushing all buffers to disk");
+        log::info!("flushing all buffers to disk");
         self.flush_all_buffers()
             .expect("failed to flush all buffers to disk");
     }

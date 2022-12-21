@@ -25,10 +25,10 @@ async fn main() -> anyhow::Result<()> {
     let data_dir = cwd.join(&flags.data_dir);
 
     if flags.init {
-        log::info!("Initializing database directory");
+        log::info!("initializing database directory");
         let buffer = BufferPool::new(120, StorageManager::new(&data_dir));
         init_database(&buffer, &data_dir).expect("Failed init default database");
-        log::info!("Database directory initialized");
+        log::info!("database directory initialized");
     }
 
     env::set_current_dir(&data_dir).unwrap();

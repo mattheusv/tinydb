@@ -48,11 +48,11 @@ impl Handler {
     /// Before starting executing SQL commands the startup message is handled by
     /// `run` method.
     async fn run(&mut self) -> Result<()> {
-        log::info!("New connection accepted");
+        log::info!("new connection accepted");
         loop {
             let msg = self.connection.receive().await?;
             if let Message::Terminate = msg {
-                log::info!("Closing connection with {}", self.connection.peer_addr()?);
+                log::info!("closing connection with {}", self.connection.peer_addr()?);
                 return Ok(());
             }
 
@@ -139,7 +139,7 @@ impl Backend {
                     });
                 }
                 Err(err) => {
-                    log::error!("Failed to authenticate: {}", err);
+                    log::error!("failed to authenticate: {}", err);
                     connection.send_error(err).await?;
                 }
             }
