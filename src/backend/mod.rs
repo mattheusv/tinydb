@@ -112,7 +112,7 @@ impl Backend {
     /// Listen for inbound connections. For each inbound connection, spawn a
     /// task to process that connection.
     pub async fn start(&self) -> Result<()> {
-        log::info!("Backend started, accepting inbound connections");
+        log::info!("database system is ready to accept connections");
         loop {
             let (socket, _) = self.listener.accept().await?;
 
@@ -182,7 +182,7 @@ pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future
             // Errors encountered when handling individual connections do not
             // bubble up to this point.
             if let Err(err) = res {
-                log::error!("Failed to accept connection: {}", err);
+                log::error!("failed to accept connection: {}", err);
             }
         }
         _ = shutdown => {
@@ -190,7 +190,7 @@ pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future
             //
             // The buffer pool will be droped at this point that will force all
             // in memory dirty pages to be written on disk.
-            log::info!("Shutting down the backend");
+            log::info!("shutting down");
         }
     }
 }

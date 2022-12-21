@@ -16,6 +16,7 @@ async fn main() -> anyhow::Result<()> {
     stderrlog::new()
         .module(module_path!())
         .quiet(flags.quiet)
+        .timestamp(stderrlog::Timestamp::Second)
         .verbosity(flags.verbose)
         .init()
         .unwrap();
@@ -32,14 +33,21 @@ async fn main() -> anyhow::Result<()> {
 
     env::set_current_dir(&data_dir).unwrap();
 
-    let listener = TcpListener::bind("127.0.0.1:6379").await?;
+    let listener = TcpListener::bind(format!("{}:{}", flags.hostname, flags.port)).await?;
 
     let config = backend::Config {
         data_dir,
         buffer_pool_size: 120,
     };
 
+    log::info!("starting tinydb server");
+    log::info!(
+        "listening on address {}, port {}",
+        flags.hostname,
+        flags.port
+    );
     backend::start(&config, listener, signal::ctrl_c()).await;
+    log::info!("database system is shut down");
 
     Ok(())
 }
