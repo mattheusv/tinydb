@@ -94,81 +94,26 @@ impl BufferDesc {
 /// It encapsulatates the BufferPoolState allowing multiple referances to it.
 ///
 /// BufferPool is reference counted and clonning will just increase the reference counter.
-pub struct BufferPool(Arc<Mutex<BufferPoolState>>);
+pub struct BufferPool {
+    /// Storage manager used to fetch pages from disk.
+    smgr: Arc<Mutex<StorageManager>>,
+
+    /// Replacer used to find a page that can be removed from memory.
+    lru: Arc<Mutex<LRU<Buffer>>>,
+
+    /// Fixed array all pages.
+    pages: Arc<RwLock<Vec<Arc<RwLock<BufferDesc>>>>>,
+
+    /// List of free buffers.
+    free_list: Arc<Mutex<Vec<Buffer>>>,
+
+    /// Map of page numers to buffer indexes.
+    page_table: Arc<RwLock<HashMap<BufferTag, Buffer>>>,
+}
 
 impl BufferPool {
     /// Create a new buffer pool with a given size.
     pub fn new(size: usize, smgr: StorageManager) -> Self {
-        Self(Arc::new(Mutex::new(BufferPoolState::new(size, smgr))))
-    }
-
-    /// Returns the buffer number for the buffer containing the block read.
-    /// The returned buffer has been pinned.
-    pub fn fetch_buffer(&self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
-        let mut buffer_pool = self.0.lock().unwrap();
-        buffer_pool.fetch_buffer(rel, page_num)
-    }
-
-    /// Physically write out a shared page to disk.
-    ///
-    /// Return error if the page could not be found in the page table, None otherwise.
-    pub fn flush_buffer(&self, buffer: &Buffer) -> Result<()> {
-        let mut buffer_pool = self.0.lock().unwrap();
-        buffer_pool.flush_buffer(buffer)
-    }
-
-    /// Return the page contents from a buffer.
-    pub fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
-        let buffer_pool = self.0.lock().unwrap();
-        buffer_pool.get_page(buffer)
-    }
-
-    /// Allocate a new empty page block on disk on the given relation. If the buffer pool is at full capacity,
-    /// alloc_page will select a replacement victim to allocate the new page.
-    ///
-    /// The returned buffer is pinned and is already marked as holding the new page.
-    ///
-    /// Return error if no new pages could be created, otherwise the buffer.
-    pub fn alloc_buffer(&self, rel: &Relation) -> Result<Buffer> {
-        let mut buffer_pool = self.0.lock().unwrap();
-        buffer_pool.alloc_buffer(rel)
-    }
-
-    /// Make the buffer available for replacement. The buffer is also unpined on lru if the ref count is 0.
-    ///
-    /// Return error if the buffer does not exists on buffer pool, None otherwise.
-    pub fn unpin_buffer(&self, buffer: Buffer, is_dirty: bool) -> Result<()> {
-        let mut buffer_pool = self.0.lock().unwrap();
-        buffer_pool.unpin_buffer(buffer, is_dirty)
-    }
-
-    /// Return the number of pages of the given relation.
-    pub fn size_of_relation(&self, rel: &Relation) -> Result<u32> {
-        let mut buffer_pool = self.0.lock().unwrap();
-        buffer_pool.size_of_relation(rel)
-    }
-}
-
-struct BufferPoolState {
-    /// Storage manager used to fetch pages from disk.
-    smgr: StorageManager,
-
-    /// Replacer used to find a page that can be removed from memory.
-    lru: LRU<Buffer>,
-
-    /// Fixed array all pages.
-    pages: Vec<Arc<RwLock<BufferDesc>>>,
-
-    /// List of free buffers.
-    free_list: Vec<Buffer>,
-
-    /// Map of page numers to buffer indexes.
-    page_table: HashMap<BufferTag, Buffer>,
-}
-
-impl BufferPoolState {
-    /// Create a new buffer pool initializing the page array with the given size.
-    fn new(size: usize, smgr: StorageManager) -> Self {
         let mut free_list = Vec::with_capacity(size);
         let mut pages = Vec::with_capacity(size);
 
@@ -182,65 +127,80 @@ impl BufferPoolState {
         }
 
         Self {
-            free_list,
-            pages,
-            smgr,
-            lru: LRU::new(size),
-            page_table: HashMap::with_capacity(size),
+            free_list: Arc::new(Mutex::new(free_list)),
+            pages: Arc::new(RwLock::new(pages)),
+            smgr: Arc::new(Mutex::new(smgr)),
+            lru: Arc::new(Mutex::new(LRU::new(size))),
+            page_table: Arc::new(RwLock::new(HashMap::with_capacity(size))),
         }
     }
 
-    /// Return the given page number buffer, fetching from disk if it's not in memory.
-    fn fetch_buffer(&mut self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
+    /// Returns the buffer number for the buffer containing the block read.
+    /// The returned buffer has been pinned.
+    pub fn fetch_buffer(&self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
         let buf_tag = BufferTag::new(page_num, rel);
-        if let Some(buffer) = self.page_table.get(&buf_tag) {
-            debug!(
-                "Page {} exists on memory on buffer {} for relation {}",
-                page_num, buffer, rel.rel_name,
-            );
+        let page_table = self.page_table.read().unwrap();
+        let buffer = page_table.get(&buf_tag);
 
-            let buf_desc = self.get_buffer_descriptor(*buffer)?;
-            let bufid = buf_desc.read().unwrap().id;
+        match buffer {
+            Some(buffer) => {
+                debug!(
+                    "Page {} exists on memory on buffer {} for relation {}",
+                    page_num, buffer, rel.rel_name,
+                );
 
-            self.pin_buffer(&buf_desc);
+                let buf_desc = self.get_buffer_descriptor(*buffer)?;
+                let bufid = buf_desc.read().unwrap().id;
 
-            Ok(bufid)
-        } else {
-            debug!(
-                "Fething page {} from disk for relation {}",
-                page_num, rel.rel_name
-            );
+                drop(page_table);
+                self.pin_buffer(&buf_desc);
 
-            // Find a new buffer id for page.
-            let new_buffer = self.new_free_buffer()?;
-            let new_buf_desc = self.get_buffer_descriptor(new_buffer)?;
-
-            {
-                let mut new_buf_desc = new_buf_desc.write().unwrap();
-                new_buf_desc.tag = buf_tag.clone();
-                new_buf_desc.refcount = 0;
-                new_buf_desc.is_dirty = false;
-                new_buf_desc.rel = Some(rel.clone());
-                // new_buf_desc.page.0.replace([0; PAGE_SIZE]);
+                Ok(bufid)
             }
+            None => {
+                debug!(
+                    "Fething page {} from disk for relation {}",
+                    page_num, rel.rel_name
+                );
+                drop(page_table);
 
-            // Read page from disk and store inside buffer descriptor.
-            {
-                let new_buf_desc = new_buf_desc.read().unwrap();
-                let mut page = new_buf_desc.page.0.lock().unwrap();
-                self.smgr.read(rel, page_num, &mut page)?;
+                // Find a new buffer id for page.
+                let new_buffer = self.new_free_buffer()?;
+                let new_buf_desc = self.get_buffer_descriptor(new_buffer)?;
+
+                {
+                    let mut new_buf_desc = new_buf_desc.write().unwrap();
+                    new_buf_desc.tag = buf_tag.clone();
+                    new_buf_desc.refcount = 0;
+                    new_buf_desc.is_dirty = false;
+                    new_buf_desc.rel = Some(rel.clone());
+                    // new_buf_desc.page.0.replace([0; PAGE_SIZE]);
+                }
+
+                // Read page from disk and store inside buffer descriptor.
+                {
+                    let new_buf_desc = new_buf_desc.read().unwrap();
+                    let mut page = new_buf_desc.page.0.lock().unwrap();
+                    let mut smgr = self.smgr.lock().unwrap();
+                    smgr.read(rel, page_num, &mut page)?;
+                }
+
+                // Add buffer descriptior on cache and pinned.
+                {
+                    let mut page_table = self.page_table.write().unwrap();
+                    page_table.insert(buf_tag, new_buffer);
+                }
+                self.pin_buffer(&new_buf_desc);
+
+                Ok(new_buffer)
             }
-
-            // Add buffer descriptior on cache and pinned.
-            self.page_table.insert(buf_tag, new_buffer);
-            self.pin_buffer(&new_buf_desc);
-
-            Ok(new_buffer)
         }
     }
 
-    // Write the page of the given buffer out to disk
-    fn flush_buffer(&mut self, buffer: &Buffer) -> Result<()> {
+    /// Physically write out a shared page to disk.
+    ///
+    /// Return error if the page could not be found in the page table, None otherwise.
+    pub fn flush_buffer(&self, buffer: &Buffer) -> Result<()> {
         let buf_desc = self.get_buffer_descriptor(*buffer)?;
         let buf_desc = buf_desc.read().unwrap();
         debug!(
@@ -251,13 +211,14 @@ impl BufferPoolState {
         let page = self.get_page(&buffer)?;
 
         let page = page.0.lock().unwrap();
-        self.smgr
-            .write(&buf_desc.relation()?, buf_desc.tag.page_number, &page)?;
+        let mut smgr = self.smgr.lock().unwrap();
+        smgr.write(&buf_desc.relation()?, buf_desc.tag.page_number, &page)?;
 
         Ok(())
     }
 
-    fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
+    /// Return the page contents from a buffer.
+    pub fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
         Ok(self
             .get_buffer_descriptor(*buffer)?
             .read()
@@ -266,9 +227,18 @@ impl BufferPoolState {
             .clone())
     }
 
-    /// Return a new allocated page buffer on the given relation. The buffer returned is pinned.
-    fn alloc_buffer(&mut self, rel: &Relation) -> Result<Buffer> {
-        let page_num = self.smgr.extend(rel)?;
+    /// Allocate a new empty page block on disk on the given relation. If the buffer pool is at full capacity,
+    /// alloc_page will select a replacement victim to allocate the new page.
+    ///
+    /// The returned buffer is pinned and is already marked as holding the new page.
+    ///
+    /// Return error if no new pages could be created, otherwise the buffer.
+    pub fn alloc_buffer(&self, rel: &Relation) -> Result<Buffer> {
+        let mut smgr = self.smgr.lock().unwrap();
+        let page_num = smgr.extend(rel)?;
+        // Force drop to avoid trying use multiple mutable references of self.
+        drop(smgr);
+
         debug!(
             "New page {} allocated for relation {}",
             page_num, rel.rel_name
@@ -277,12 +247,20 @@ impl BufferPoolState {
     }
 
     /// Return a new free buffer from free list or victim if there is no more free buffers to use.
-    fn new_free_buffer(&mut self) -> Result<Buffer> {
+    fn new_free_buffer(&self) -> Result<Buffer> {
+        let page_table = self.page_table.read().unwrap();
         assert!(
-            self.page_table.len() < self.page_table.capacity(),
+            page_table.len() < page_table.capacity(),
             "Buffer pool exceeded the maximum capacity"
         );
-        match self.free_list.pop() {
+        drop(page_table);
+
+        let mut free_list = self.free_list.lock().unwrap();
+        let buffer = free_list.pop();
+        // Force drop to avoid trying use multiple mutable references of self.
+        drop(free_list);
+
+        match buffer {
             Some(buffer) => Ok(buffer),
             None => self.victim(),
         }
@@ -291,9 +269,11 @@ impl BufferPoolState {
     /// Use the LRU replacement policy to choose a page to victim. This function panic if the LRU
     /// don't have any page id to victim. Otherwise the page will be removed from page table. If
     /// the choosen page is dirty victim will flush to disk before removing from page table.
-    fn victim(&mut self) -> Result<Buffer> {
+    fn victim(&self) -> Result<Buffer> {
         let buffer = self
             .lru
+            .lock()
+            .unwrap()
             .victim()
             .expect("replacer does not contain any page id to victim");
 
@@ -310,23 +290,28 @@ impl BufferPoolState {
             self.flush_buffer(&buffer)?;
         }
 
-        self.page_table.remove(&buf_desc.tag);
+        let mut page_table = self.page_table.write().unwrap();
+        page_table.remove(&buf_desc.tag);
 
         Ok(buffer)
     }
 
     fn get_buffer_descriptor(&self, buffer: Buffer) -> Result<Arc<RwLock<BufferDesc>>> {
-        Ok(self.pages.get(buffer - 1).unwrap().clone())
+        let pages = self.pages.read().unwrap();
+        Ok(pages.get(buffer - 1).unwrap().clone())
     }
 
     /// Make buffer unavailable for replacement.
-    fn pin_buffer(&mut self, buffer: &Arc<RwLock<BufferDesc>>) {
+    fn pin_buffer(&self, buffer: &Arc<RwLock<BufferDesc>>) {
         let mut buffer = buffer.write().unwrap();
         buffer.refcount += 1;
-        self.lru.pin(&buffer.id);
+        self.lru.lock().unwrap().pin(&buffer.id);
     }
 
-    fn unpin_buffer(&mut self, buffer: Buffer, is_dirty: bool) -> Result<()> {
+    /// Make the buffer available for replacement. The buffer is also unpined on lru if the ref count is 0.
+    ///
+    /// Return error if the buffer does not exists on buffer pool, None otherwise.
+    pub fn unpin_buffer(&self, buffer: Buffer, is_dirty: bool) -> Result<()> {
         let buf_desc = self.get_buffer_descriptor(buffer)?;
         let mut buf_desc = buf_desc.write().unwrap();
 
@@ -334,14 +319,14 @@ impl BufferPoolState {
         buf_desc.refcount -= 1;
 
         if buf_desc.refcount == 0 {
-            self.lru.unpin(&buffer);
+            self.lru.lock().unwrap().unpin(&buffer);
         }
         Ok(())
     }
 
     // TODO: call flush_buffer instead of duplicate the code.
-    pub fn flush_all_buffers(&mut self) -> Result<()> {
-        for buffer in self.page_table.values() {
+    pub fn flush_all_buffers(&self) -> Result<()> {
+        for buffer in self.page_table.read().unwrap().values() {
             let buf_desc = self.get_buffer_descriptor(*buffer)?;
             let buf_desc = buf_desc.read().unwrap();
             debug!(
@@ -352,18 +337,19 @@ impl BufferPoolState {
             let page = self.get_page(&buffer)?;
 
             let page = page.0.lock().unwrap();
-            self.smgr
-                .write(&buf_desc.relation()?, buf_desc.tag.page_number, &page)?;
+            let mut smgr = self.smgr.lock().unwrap();
+            smgr.write(&buf_desc.relation()?, buf_desc.tag.page_number, &page)?;
         }
         Ok(())
     }
 
-    fn size_of_relation(&mut self, rel: &Relation) -> Result<u32> {
-        self.smgr.size(rel)
+    /// Return the number of pages of the given relation.
+    pub fn size_of_relation(&self, rel: &Relation) -> Result<u32> {
+        self.smgr.lock().unwrap().size(rel)
     }
 }
 
-impl Drop for BufferPoolState {
+impl Drop for BufferPool {
     fn drop(&mut self) {
         log::info!("flushing all buffers to disk");
         self.flush_all_buffers()
@@ -373,7 +359,13 @@ impl Drop for BufferPoolState {
 
 impl Clone for BufferPool {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            smgr: self.smgr.clone(),
+            lru: self.lru.clone(),
+            pages: self.pages.clone(),
+            free_list: self.free_list.clone(),
+            page_table: self.page_table.clone(),
+        }
     }
 }
 

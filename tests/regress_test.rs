@@ -22,7 +22,7 @@ async fn test_regress() -> anyhow::Result<()> {
     let _tinydb = TinyDBCommand::start(&temp_dir.path())?;
 
     // Wait the server to start completely.
-    std::thread::sleep(std::time::Duration::from_millis(5));
+    std::thread::sleep(std::time::Duration::from_millis(500));
 
     for sql_file in sql_entries {
         let mut output = Vec::new();
