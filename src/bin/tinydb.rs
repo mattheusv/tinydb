@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
         .module(module_path!())
         .quiet(flags.quiet)
         .timestamp(stderrlog::Timestamp::Second)
-        .verbosity(flags.verbose)
+        .verbosity(flags.log_level)
         .init()
         .unwrap();
 

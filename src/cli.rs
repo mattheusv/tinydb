@@ -16,9 +16,9 @@ pub struct Flags {
     #[structopt(long = "data-dir", default_value = "data")]
     pub data_dir: String,
 
-    /// Verbose mode (-v, -vv, -vvv, etc)
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
-    pub verbose: usize,
+    /// Log level
+    #[structopt(long = "log-level", default_value = "info")]
+    pub log_level: log::Level,
 
     /// Host name or IP address to listen on.
     #[structopt(long = "hostname", default_value = "127.0.0.1")]
