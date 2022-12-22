@@ -171,7 +171,7 @@ pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future
         StorageManager::new(&config.data_dir),
     );
 
-    let backend = Backend::new(listener, buffer);
+    let backend = Backend::new(listener, buffer.clone());
 
     tokio::select! {
         res = backend.start() => {
@@ -190,6 +190,8 @@ pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future
             //
             // The buffer pool will be droped at this point that will force all
             // in memory dirty pages to be written on disk.
+            drop(buffer);
+
             log::info!("shutting down");
         }
     }
