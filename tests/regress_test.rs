@@ -4,8 +4,8 @@ use std::{
     process::{Child, Command},
 };
 
-#[tokio::test]
-async fn test_regress() -> anyhow::Result<()> {
+#[test]
+fn test_regress() -> anyhow::Result<()> {
     build()?;
 
     let sql_entries = fs::read_dir(Path::new("tests").join("regress").join("sql"))
