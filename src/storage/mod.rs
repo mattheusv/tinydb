@@ -33,8 +33,8 @@ pub const PAGE_SIZE: usize = 8192;
 /// Page represents a mutable reference counter to a disk block. Page is
 /// reference counted and clonning will just increase the reference counter.
 ///
-/// A page is a read only, to write data on buffer page call the writer method,
-/// that will create a new buffer page writer, writing incomming buffer data in
+/// A page is a read only, to write data on buffer page use the PageWriter
+/// object, that will create a new page writer, writing incomming buffer data in
 /// a mutable shared reference of a page.
 ///
 /// The storage manager is the only pieces of code that should be accessing disk
@@ -46,14 +46,23 @@ impl Page {
     pub fn new(page: [u8; PAGE_SIZE]) -> Self {
         Self(Arc::new(RwLock::new(page)))
     }
+}
 
-    /// Create a new page writer, writing new data to
-    /// the same reference of a page.
-    pub fn writer(&mut self) -> PageWriter {
-        PageWriter {
-            pos: 0,
-            page: self.clone(),
-        }
+impl Default for Page {
+    fn default() -> Self {
+        Self(Arc::new(RwLock::new([0; PAGE_SIZE])))
+    }
+}
+
+impl Clone for Page {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl PartialEq for Page {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.read().unwrap().as_ref() == other.0.read().unwrap().as_ref()
     }
 }
 
@@ -120,6 +129,14 @@ impl io::Write for PageWriter {
 }
 
 impl PageWriter {
+    /// Create a new page write, writing data on the given page.
+    pub fn new(page: &Page) -> Self {
+        Self {
+            pos: 0,
+            page: page.clone(),
+        }
+    }
+
     /// An wrapper around seek and write calls.
     ///
     /// Start to write the incomming buf data that the given offset.
@@ -159,23 +176,5 @@ impl io::Seek for PageWriter {
         }
 
         Ok(self.pos as u64)
-    }
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Self(Arc::new(RwLock::new([0; PAGE_SIZE])))
-    }
-}
-
-impl Clone for Page {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl PartialEq for Page {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.read().unwrap().as_ref() == other.0.read().unwrap().as_ref()
     }
 }

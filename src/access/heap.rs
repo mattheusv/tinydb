@@ -17,9 +17,9 @@ use super::heaptuple::HeapTuple;
 /// Insert a new tuple into a heap page of the given relation.
 pub fn heap_insert(buffer_pool: &BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
-    let mut page = buffer_pool.get_page(&buffer)?;
+    let page = buffer_pool.get_page(&buffer)?;
 
-    page_add_item(&mut page, &tuple.encode()?)?;
+    page_add_item(&page, &tuple.encode()?)?;
 
     buffer_pool.unpin_buffer(buffer, true)?;
 
