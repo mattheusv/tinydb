@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{atomic, Arc},
+};
 
 use anyhow::{bail, Result};
 use log::debug;
@@ -105,6 +108,10 @@ pub struct BufferPool {
 
     /// Map of page numers to buffer indexes.
     page_table: Arc<RwLock<HashMap<BufferTag, Buffer>>>,
+
+    /// How many strong references. Dirty pages will be written back to disk
+    /// once there are no more references.
+    refs: Arc<atomic::AtomicUsize>,
 }
 
 impl BufferPool {
@@ -128,6 +135,7 @@ impl BufferPool {
             smgr: Arc::new(Mutex::new(smgr)),
             lru: Arc::new(Mutex::new(LRU::new(size))),
             page_table: Arc::new(RwLock::new(HashMap::with_capacity(size))),
+            refs: Arc::new(atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -344,20 +352,31 @@ impl BufferPool {
 
 impl Drop for BufferPool {
     fn drop(&mut self) {
-        log::info!("flushing all buffers to disk");
-        self.flush_all_buffers()
-            .expect("failed to flush all buffers to disk");
+        let refs = self.refs.fetch_sub(1, atomic::Ordering::SeqCst);
+
+        log::trace!("Buffer Pool de-referenced; original_ref: {} ", refs);
+
+        if self.refs.load(atomic::Ordering::SeqCst) == 0 {
+            log::info!("flushing all buffers to disk");
+            self.flush_all_buffers()
+                .expect("failed to flush all buffers to disk");
+        }
     }
 }
 
 impl Clone for BufferPool {
     fn clone(&self) -> Self {
+        let refs = &self.refs.fetch_add(1, atomic::Ordering::SeqCst);
+
+        log::trace!("Buffer Pool referenced; original_ref: {} ", refs);
+
         Self {
             smgr: self.smgr.clone(),
             lru: self.lru.clone(),
             pages: self.pages.clone(),
             free_list: self.free_list.clone(),
             page_table: self.page_table.clone(),
+            refs: self.refs.clone(),
         }
     }
 }
