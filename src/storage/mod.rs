@@ -7,7 +7,7 @@ pub mod smgr;
 
 use std::{
     io::{self, Seek, Write},
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 
 pub use buffer::BufferPool;
@@ -38,11 +38,11 @@ pub const PAGE_SIZE: usize = 8192;
 /// The storage manager is the only pieces of code that should be accessing disk
 /// blocks directly.
 #[derive(Debug)]
-pub struct Page(Arc<Mutex<[u8; PAGE_SIZE]>>);
+pub struct Page(Arc<RwLock<[u8; PAGE_SIZE]>>);
 
 impl Page {
     pub fn new(page: [u8; PAGE_SIZE]) -> Self {
-        Self(Arc::new(Mutex::new(page)))
+        Self(Arc::new(RwLock::new(page)))
     }
 
     /// Create a new page writer, writing new data to
@@ -78,7 +78,7 @@ impl io::Write for PageWriter {
     ///
     /// The incomming buf lenght can not exceed the PAGE_SIZE.
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut page = self.page.0.lock().unwrap();
+        let mut page = self.page.0.write().unwrap();
 
         let new_size = self.pos + buf.len();
         if new_size > page.len() {
@@ -122,7 +122,7 @@ impl PageWriter {
 impl io::Seek for PageWriter {
     /// Change the current position of buffer page writer.
     fn seek(&mut self, pos: io::SeekFrom) -> std::io::Result<u64> {
-        let page = self.page.0.lock().unwrap();
+        let page = self.page.0.read().unwrap();
 
         let page_size = page.len();
         match pos {
@@ -153,7 +153,7 @@ impl io::Seek for PageWriter {
 
 impl Default for Page {
     fn default() -> Self {
-        Self(Arc::new(std::sync::Mutex::new([0; PAGE_SIZE])))
+        Self(Arc::new(RwLock::new([0; PAGE_SIZE])))
     }
 }
 
@@ -165,6 +165,6 @@ impl Clone for Page {
 
 impl PartialEq for Page {
     fn eq(&self, other: &Self) -> bool {
-        self.0.lock().unwrap().as_ref() == other.0.lock().unwrap().as_ref()
+        self.0.read().unwrap().as_ref() == other.0.read().unwrap().as_ref()
     }
 }

@@ -133,7 +133,7 @@ impl Disk {
         let mut file = self.file.lock().unwrap();
         file.seek(SeekFrom::Start(self.offset(page_number)))?;
 
-        let mut page = page.0.lock().unwrap();
+        let mut page = page.0.write().unwrap();
         let count = file.read(page.as_mut())?;
         debug!("Read {} bytes from page {}", count, page_number);
 
@@ -149,7 +149,7 @@ impl Disk {
         let mut file = self.file.lock().unwrap();
         file.seek(SeekFrom::Start(self.offset(number)))?;
 
-        let page = page.0.lock().unwrap();
+        let page = page.0.read().unwrap();
         let count = file.write(page.as_ref())?;
         debug!("Wrote {} bytes to page {}", count, number);
 
