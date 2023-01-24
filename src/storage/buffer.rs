@@ -61,7 +61,8 @@ struct BufferDesc {
     /// Flag informing if buffer should be writen to disk if is dirty or not.
     is_dirty: bool,
 
-    /// Relation that this buffer belongs. None if buffer is free to use on buffer pool.
+    /// Relation that this buffer belongs. None if buffer is free to use on
+    /// buffer pool.
     rel: Option<Relation>,
 
     /// Raw page from buffer.
@@ -88,11 +89,13 @@ impl BufferDesc {
     }
 }
 
-/// Shared buffer pool manager interface used by almost all other database components.
+/// Shared buffer pool manager interface used by almost all other database
+/// components.
 ///
 /// It encapsulatates the BufferPoolState allowing multiple referances to it.
 ///
-/// BufferPool is reference counted and clonning will just increase the reference counter.
+/// BufferPool is reference counted and clonning will just increase the
+/// reference counter.
 pub struct BufferPool {
     /// Storage manager used to fetch pages from disk.
     smgr: Arc<Mutex<StorageManager>>,
@@ -139,8 +142,8 @@ impl BufferPool {
         }
     }
 
-    /// Returns the buffer number for the buffer containing the block read.
-    /// The returned buffer has been pinned.
+    /// Returns the buffer number for the buffer containing the block read. The
+    /// returned buffer has been pinned.
     pub fn fetch_buffer(&self, rel: &Relation, page_num: PageNumber) -> Result<Buffer> {
         let buf_tag = BufferTag::new(page_num, rel);
         let page_table = self.page_table.read().unwrap();
@@ -202,7 +205,8 @@ impl BufferPool {
 
     /// Physically write out a shared page to disk.
     ///
-    /// Return error if the page could not be found in the page table, None otherwise.
+    /// Return error if the page could not be found in the page table, None
+    /// otherwise.
     pub fn flush_buffer(&self, buffer: &Buffer) -> Result<()> {
         let buf_desc = self.get_buffer_descriptor(*buffer)?;
         let buf_desc = buf_desc.read().unwrap();
@@ -229,10 +233,12 @@ impl BufferPool {
             .clone())
     }
 
-    /// Allocate a new empty page block on disk on the given relation. If the buffer pool is at full capacity,
-    /// alloc_page will select a replacement victim to allocate the new page.
+    /// Allocate a new empty page block on disk on the given relation. If the
+    /// buffer pool is at full capacity, alloc_page will select a replacement
+    /// victim to allocate the new page.
     ///
-    /// The returned buffer is pinned and is already marked as holding the new page.
+    /// The returned buffer is pinned and is already marked as holding the new
+    /// page.
     ///
     /// Return error if no new pages could be created, otherwise the buffer.
     pub fn alloc_buffer(&self, rel: &Relation) -> Result<Buffer> {
@@ -248,7 +254,8 @@ impl BufferPool {
         self.fetch_buffer(rel, page_num)
     }
 
-    /// Return a new free buffer from free list or victim if there is no more free buffers to use.
+    /// Return a new free buffer from free list or victim if there is no more
+    /// free buffers to use.
     fn new_free_buffer(&self) -> Result<Buffer> {
         let page_table = self.page_table.read().unwrap();
         assert!(
@@ -268,9 +275,10 @@ impl BufferPool {
         }
     }
 
-    /// Use the LRU replacement policy to choose a page to victim. This function panic if the LRU
-    /// don't have any page id to victim. Otherwise the page will be removed from page table. If
-    /// the choosen page is dirty victim will flush to disk before removing from page table.
+    /// Use the LRU replacement policy to choose a page to victim. This function
+    /// panic if the LRU don't have any page id to victim. Otherwise the page
+    /// will be removed from page table. If the choosen page is dirty victim
+    /// will flush to disk before removing from page table.
     fn victim(&self) -> Result<Buffer> {
         let buffer = self
             .lru
@@ -310,9 +318,11 @@ impl BufferPool {
         self.lru.lock().unwrap().pin(&buffer.id);
     }
 
-    /// Make the buffer available for replacement. The buffer is also unpined on lru if the ref count is 0.
+    /// Make the buffer available for replacement. The buffer is also unpined on
+    /// lru if the ref count is 0.
     ///
-    /// Return error if the buffer does not exists on buffer pool, None otherwise.
+    /// Return error if the buffer does not exists on buffer pool, None
+    /// otherwise.
     pub fn unpin_buffer(&self, buffer: Buffer, is_dirty: bool) -> Result<()> {
         let buf_desc = self.get_buffer_descriptor(buffer)?;
         let mut buf_desc = buf_desc.write().unwrap();
