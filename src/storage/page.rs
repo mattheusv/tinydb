@@ -26,7 +26,8 @@ pub struct PageHeader {
 impl PageHeader {
     /// Deserializa the page header for the given raw page data.
     pub fn new(page: &Page) -> Result<Self, bincode::Error> {
-        bincode::deserialize::<PageHeader>(&page.slice(0, PAGE_HEADER_SIZE))
+        let page = page.0.read().unwrap();
+        bincode::deserialize::<PageHeader>(&page[0..PAGE_HEADER_SIZE])
     }
 }
 

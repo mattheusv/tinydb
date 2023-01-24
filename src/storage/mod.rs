@@ -10,6 +10,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use self::page::{ItemId, PageHeader, PAGE_HEADER_SIZE};
+
 pub use buffer::BufferPool;
 
 /// Pages are numbered sequentially, starting at 0.
@@ -53,12 +55,21 @@ impl Page {
             page: self.clone(),
         }
     }
+}
 
-    /// Return a slice of page on the given range.
-    pub fn slice(&self, start: usize, end: usize) -> Vec<u8> {
-        let page = self.0.lock().unwrap();
-        page[start..end].to_vec()
-    }
+/// Return the array of item identifiers pointing to the actual items.
+pub fn item_id_data_from_page(page: &Page) -> anyhow::Result<Vec<u8>> {
+    let page_header = PageHeader::new(page)?;
+
+    let page = page.0.read().unwrap();
+    Ok(page[PAGE_HEADER_SIZE..page_header.start_free_space as usize].to_vec())
+}
+
+/// Return the raw value of the given item inside the given page.
+pub fn value_from_page_item(page: &Page, item: &ItemId) -> anyhow::Result<Vec<u8>> {
+    let page = page.0.read().unwrap();
+
+    Ok(page[item.offset as usize..(item.offset + item.length) as usize].to_vec())
 }
 
 /// A buffer page writer.

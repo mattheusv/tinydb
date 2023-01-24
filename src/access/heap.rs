@@ -1,11 +1,12 @@
 use std::io::{Cursor, Read};
 
+use crate::storage;
 use crate::storage::buffer::Buffer;
 use crate::{
     relation::Relation,
     storage::{
         freespace,
-        page::{page_add_item, ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE},
+        page::{page_add_item, ItemId, ITEM_ID_SIZE},
         BufferPool,
     },
 };
@@ -51,9 +52,7 @@ impl HeapScanner {
         let buffer = buffer_pool.fetch_buffer(rel, 1)?;
 
         let page = buffer_pool.get_page(&buffer)?;
-        let page_header = PageHeader::new(&page)?;
-
-        let item_id_data = page.slice(PAGE_HEADER_SIZE, page_header.start_free_space as usize);
+        let item_id_data = storage::item_id_data_from_page(&page)?;
 
         Ok(Self {
             buffer_pool,
@@ -85,11 +84,8 @@ impl HeapScanner {
                 let item_id = bincode::deserialize::<ItemId>(&self.item_id_data)?;
 
                 // Slice the raw page to get a refenrece to a tuple inside the page.
-                let data = &page.slice(
-                    item_id.offset as usize,
-                    (item_id.offset + item_id.length) as usize,
-                );
-                let tuple = HeapTuple::decode(data)?;
+                let data = storage::value_from_page_item(&page, &item_id)?;
+                let tuple = HeapTuple::decode(&data)?;
 
                 self.item_id_data = vec![0; ITEM_ID_SIZE];
 
