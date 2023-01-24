@@ -66,8 +66,9 @@ impl StorageManager {
         disk.write_page(page_number, page)
     }
 
-    /// Read the specified block from the storage manager relation.
-    pub fn read(&mut self, rel: &Relation, page_number: PageNumber, page: &mut Page) -> Result<()> {
+    /// Read the specified block from the storage manager relation and store the contents inside
+    /// the given page.
+    pub fn read(&mut self, rel: &Relation, page_number: PageNumber, page: &Page) -> Result<()> {
         let disk = self.smgr_from_relation(rel)?;
         disk.read_page(page_number, page)
     }

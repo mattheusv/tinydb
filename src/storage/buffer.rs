@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    io::{self, Seek, Write},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{bail, Result};
 use log::debug;
@@ -10,7 +6,7 @@ use std::sync::{Mutex, RwLock};
 
 use crate::{lru::LRU, relation::Relation, Oid, INVALID_OID};
 
-use super::{smgr::StorageManager, Page, PageNumber, INVALID_PAGE_NUMBER, PAGE_SIZE};
+use super::{smgr::StorageManager, Page, PageNumber, INVALID_PAGE_NUMBER};
 
 /// Buffer identifiers.
 ///
@@ -66,7 +62,7 @@ struct BufferDesc {
     rel: Option<Relation>,
 
     /// Raw page from buffer.
-    page: BufferPage,
+    page: Page,
 }
 
 impl BufferDesc {
@@ -77,7 +73,7 @@ impl BufferDesc {
             refcount: 0,
             is_dirty: false,
             rel: None,
-            page: BufferPage::default(),
+            page: Page::default(),
         }
     }
 
@@ -180,9 +176,8 @@ impl BufferPool {
                 // Read page from disk and store inside buffer descriptor.
                 {
                     let new_buf_desc = new_buf_desc.read().unwrap();
-                    let mut page = new_buf_desc.page.0.lock().unwrap();
                     let mut smgr = self.smgr.lock().unwrap();
-                    smgr.read(rel, page_num, &mut page)?;
+                    smgr.read(rel, page_num, &new_buf_desc.page)?;
                 }
 
                 // Add buffer descriptior on cache and pinned.
@@ -210,7 +205,6 @@ impl BufferPool {
         );
         let page = self.get_page(&buffer)?;
 
-        let page = page.0.lock().unwrap();
         let mut smgr = self.smgr.lock().unwrap();
         smgr.write(&buf_desc.relation()?, buf_desc.tag.page_number, &page)?;
 
@@ -218,7 +212,7 @@ impl BufferPool {
     }
 
     /// Return the page contents from a buffer.
-    pub fn get_page(&self, buffer: &Buffer) -> Result<BufferPage> {
+    pub fn get_page(&self, buffer: &Buffer) -> Result<Page> {
         Ok(self
             .get_buffer_descriptor(*buffer)?
             .read()
@@ -336,7 +330,6 @@ impl BufferPool {
             );
             let page = self.get_page(&buffer)?;
 
-            let page = page.0.lock().unwrap();
             let mut smgr = self.smgr.lock().unwrap();
             smgr.write(&buf_desc.relation()?, buf_desc.tag.page_number, &page)?;
         }
@@ -366,137 +359,5 @@ impl Clone for BufferPool {
             free_list: self.free_list.clone(),
             page_table: self.page_table.clone(),
         }
-    }
-}
-
-/// A mutable reference counter to a buffer page.
-///
-/// BufferPage is reference counted and clonning will just increase
-/// the reference counter.
-///
-/// Buffer page is a read only instance of a page. To write
-/// data on buffer page call the writer method, that will
-/// create a new buffer page writer, writing incomming buffer
-/// data in a mutable shared reference of a page.
-///
-/// It mostly used by buffer pool and access methods.
-pub struct BufferPage(Arc<std::sync::Mutex<Page>>);
-
-impl BufferPage {
-    /// Create a new page writer, writing new data to
-    /// the same reference of a page.
-    pub fn writer(&mut self) -> BufferPageWriter {
-        BufferPageWriter {
-            pos: 0,
-            page: self.0.clone(),
-        }
-    }
-
-    /// Return a slice of page on the given range.
-    pub fn slice(&self, start: usize, end: usize) -> Vec<u8> {
-        let page = self.0.lock().unwrap();
-        page[start..end].to_vec()
-    }
-}
-
-/// A buffer page writer.
-///
-/// BufferPageWriter implements std::io::Write and std::io::Seek traits
-/// so it can be used as a writer parameter when serializing data.
-pub struct BufferPageWriter {
-    /// Current position of writer to write incommig buffer data.
-    pos: usize,
-
-    /// Mutable shared reference to write incomming data.
-    page: Arc<std::sync::Mutex<Page>>,
-}
-
-impl io::Write for BufferPageWriter {
-    /// Write the incomming buf on in memory referente of page.
-    ///
-    /// The incomming buf lenght can not exceed the PAGE_SIZE.
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut page = self.page.lock().unwrap();
-
-        let new_size = self.pos + buf.len();
-        if new_size > page.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Size of buffer {} can not be greater than {}",
-                    new_size,
-                    page.len(),
-                ),
-            ));
-        }
-
-        let mut current_pos = self.pos;
-        for b in buf {
-            page[current_pos] = b.clone();
-            current_pos += 1;
-        }
-
-        self.pos = current_pos;
-
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl BufferPageWriter {
-    /// An wrapper around seek and write calls.
-    ///
-    /// Start to write the incomming buf data that the given offset.
-    pub fn write_at(&mut self, buf: &[u8], offset: io::SeekFrom) -> Result<usize> {
-        self.seek(offset)?;
-        let size = self.write(buf)?;
-        Ok(size)
-    }
-}
-
-impl io::Seek for BufferPageWriter {
-    /// Change the current position of buffer page writer.
-    fn seek(&mut self, pos: io::SeekFrom) -> std::io::Result<u64> {
-        let page = self.page.lock().unwrap();
-
-        let page_size = page.len();
-        match pos {
-            std::io::SeekFrom::Start(pos) => {
-                self.pos = pos as usize;
-            }
-            std::io::SeekFrom::End(pos) => {
-                self.pos = page_size + pos as usize;
-            }
-            std::io::SeekFrom::Current(pos) => {
-                self.pos += pos as usize;
-            }
-        };
-
-        if self.pos >= page_size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Can not seek for a position {} that is greater than page size {}.",
-                    self.pos, page_size,
-                ),
-            ));
-        }
-
-        Ok(self.pos as u64)
-    }
-}
-
-impl Default for BufferPage {
-    fn default() -> Self {
-        Self(Arc::new(std::sync::Mutex::new([0; PAGE_SIZE])))
-    }
-}
-
-impl Clone for BufferPage {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
     }
 }

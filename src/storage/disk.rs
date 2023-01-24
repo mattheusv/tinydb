@@ -125,34 +125,41 @@ impl Disk {
 
     /// Read a page from file.  
     ///
-    /// Reads a page from the disk, and updates the in-memory MemPage struct passed on
-    /// page arg. Any changes done to a MemPage will not be effective until call the
-    /// [write_page](Disk::write_page] with that MemPage.
-    pub fn read_page(&self, page_number: PageNumber, page: &mut Page) -> Result<()> {
-        let mut file = self.file.lock().unwrap();
+    /// Reads a page from the disk, and updates the given in-memory Page struct. Any changes done
+    /// to a Page will not be effective until call the [write_page](Disk::write_page] with that
+    /// Page.
+    pub fn read_page(&self, page_number: PageNumber, page: &Page) -> Result<()> {
         self.validate_page(page_number)?;
+        let mut file = self.file.lock().unwrap();
         file.seek(SeekFrom::Start(self.offset(page_number)))?;
-        let count = file.read(page)?;
+
+        let mut page = page.0.lock().unwrap();
+        let count = file.read(page.as_mut())?;
         debug!("Read {} bytes from page {}", count, page_number);
+
         Ok(())
     }
 
     /// Write a page to file.
     ///
-    /// Writes the in-memory copy of a page (stored in a MemPage struct) back to disk.
+    /// Writes the given in-memory copy of a page back to disk.
     pub fn write_page(&self, number: PageNumber, page: &Page) -> Result<()> {
-        let mut file = self.file.lock().unwrap();
         self.validate_page(number)?;
+
+        let mut file = self.file.lock().unwrap();
         file.seek(SeekFrom::Start(self.offset(number)))?;
-        let count = file.write(page)?;
+
+        let page = page.0.lock().unwrap();
+        let count = file.write(page.as_ref())?;
         debug!("Wrote {} bytes to page {}", count, number);
+
         Ok(())
     }
 
     /// Allocate an extra page on the file and returns the page number
     pub fn allocate_page(&self) -> Result<u32> {
         let new_page = self.total_pages.fetch_add(1, Ordering::SeqCst) + 1;
-        self.write_page(new_page, &[0; PAGE_SIZE])?;
+        self.write_page(new_page, &Page::default())?;
         Ok(new_page)
     }
 
@@ -240,11 +247,11 @@ mod tests {
     fn test_first_page_not_override_header() -> Result<()> {
         let disk = open_test_disk()?;
         let page_number = disk.allocate_page()?;
-        let mem_page = [1; PAGE_SIZE];
+        let mem_page = Page::new([1; PAGE_SIZE]);
         disk.write_page(page_number, &mem_page)?;
 
-        let mut page = [0; PAGE_SIZE];
-        disk.read_page(page_number, &mut page)?;
+        let page = Page::default();
+        disk.read_page(page_number, &page)?;
 
         assert_eq!(disk.read_header()?, Header::default());
         assert_eq!(mem_page, page);
@@ -259,14 +266,14 @@ mod tests {
             // Open empty database file and create a page.
             let disk = Disk::open(file.path())?;
             let page_number = disk.allocate_page()?;
-            let page_data = [0; PAGE_SIZE];
+            let page_data = Page::default();
             disk.write_page(page_number, &page_data)?;
         }
 
         // Open an already existed database file and create a new page.
         let disk = Disk::open(file.path())?;
         let page_number = disk.allocate_page()?;
-        let page_data = [0; PAGE_SIZE];
+        let page_data = Page::default();
         disk.write_page(page_number, &page_data)?;
 
         assert_eq!(2, disk.size()?);
@@ -280,7 +287,7 @@ mod tests {
 
         for i in 0..total_pages {
             let page_number: PageNumber = disk.allocate_page()?;
-            let page_data = [i; PAGE_SIZE];
+            let page_data = Page::new([i; PAGE_SIZE]);
             disk.write_page(page_number, &page_data)?;
         }
 
@@ -299,10 +306,10 @@ mod tests {
         // that the disk read the correct offset.
         for i in 0..total_pages {
             let page_number: PageNumber = disk.allocate_page()?;
-            let page_data = [i; PAGE_SIZE];
+            let page_data = Page::new([i; PAGE_SIZE]);
             disk.write_page(page_number, &page_data)?;
 
-            let mut page = [0; PAGE_SIZE];
+            let mut page = Page::default();
             disk.read_page(page_number, &mut page)?;
 
             assert_eq!(page_data, page);
@@ -314,7 +321,7 @@ mod tests {
     #[test]
     fn test_read_invalid_page() -> Result<()> {
         let disk = open_test_disk()?;
-        let mut page = [0; PAGE_SIZE];
+        let mut page = Page::default();
         let result = disk.read_page(1, &mut page);
 
         let err = result.unwrap_err();

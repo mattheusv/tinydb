@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{buffer::BufferPage, PAGE_SIZE};
+use super::{Page, PAGE_SIZE};
 
 /// Represents the fixed size of a page header.
 pub const PAGE_HEADER_SIZE: usize = size_of::<PageHeader>();
@@ -25,7 +25,7 @@ pub struct PageHeader {
 
 impl PageHeader {
     /// Deserializa the page header for the given raw page data.
-    pub fn new(page: &BufferPage) -> Result<Self, bincode::Error> {
+    pub fn new(page: &Page) -> Result<Self, bincode::Error> {
         bincode::deserialize::<PageHeader>(&page.slice(0, PAGE_HEADER_SIZE))
     }
 }
@@ -58,7 +58,7 @@ pub const ITEM_ID_SIZE: usize = size_of::<ItemId>();
 
 /// Add a new item to a page. The page header start_free_space and end_free_space is also updated
 /// to point to the new offsets after the item is inserted on in-memory page.
-pub fn page_add_item(page: &mut BufferPage, item: &Vec<u8>) -> Result<()> {
+pub fn page_add_item(page: &mut Page, item: &Vec<u8>) -> Result<()> {
     let mut header = PageHeader::new(page)?;
 
     // Select the offset number to place the new item
@@ -88,13 +88,12 @@ pub fn page_add_item(page: &mut BufferPage, item: &Vec<u8>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
     fn test_page_add_item() -> Result<(), bincode::Error> {
         // Create a new empty page with the default header values.
-        let mut page = BufferPage::default();
+        let mut page = Page::default();
 
         let mut page_writer = page.writer();
         bincode::serialize_into(&mut page_writer, &PageHeader::default())?;
