@@ -52,7 +52,7 @@ impl ConnectionExecutor {
     }
 
     pub fn exec_query(&self, query: &Box<ast::Query>) -> Result<PGResult> {
-        let mut plan = Plan::create(self.buffer_pool.clone(), &self.config.database, query)?;
+        let mut plan = Plan::create(&self.buffer_pool, &self.config.database, query)?;
         let executor = Executor::new();
         let tuple_table = executor.exec(&mut plan)?;
         Ok(PGResult::from(tuple_table))
@@ -65,11 +65,8 @@ impl ConnectionExecutor {
         source: &Box<ast::Query>,
     ) -> Result<()> {
         let rel_name = table_name.0[0].to_string();
-        let pg_class_rel = catalog::get_pg_class_relation(
-            self.buffer_pool.clone(),
-            &self.config.database,
-            &rel_name,
-        )?;
+        let pg_class_rel =
+            catalog::get_pg_class_relation(&self.buffer_pool, &self.config.database, &rel_name)?;
 
         let rel = access::open_relation(
             pg_class_rel.oid,
@@ -81,7 +78,7 @@ impl ConnectionExecutor {
         match &source.body {
             ast::SetExpr::Values(values) => {
                 let tuple_desc = catalog::tuple_desc_from_relation(
-                    self.buffer_pool.clone(),
+                    &self.buffer_pool,
                     &self.config.database,
                     &rel_name,
                 )?;

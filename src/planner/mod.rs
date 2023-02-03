@@ -57,7 +57,7 @@ pub struct Plan {
 
 impl Plan {
     /// Create a new plan for the given parsed query.
-    pub fn create(buffer_pool: BufferPool, db_oid: &Oid, query: &Box<ast::Query>) -> Result<Plan> {
+    pub fn create(buffer_pool: &BufferPool, db_oid: &Oid, query: &Box<ast::Query>) -> Result<Plan> {
         let plan = match &query.body {
             SetExpr::Select(select) => create_plan_from_select(buffer_pool, db_oid, &select)?,
             _ => bail!(SQLError::Unsupported(query.body.to_string())),
@@ -67,7 +67,7 @@ impl Plan {
 }
 
 fn create_plan_from_select(
-    buffer_pool: BufferPool,
+    buffer_pool: &BufferPool,
     db_oid: &Oid,
     select: &ast::Select,
 ) -> Result<Plan> {
@@ -82,10 +82,10 @@ fn create_plan_from_select(
     match &from.relation {
         TableFactor::Table { name, .. } => {
             let rel_name = name.0[0].to_string();
-            let pg_class = catalog::get_pg_class_relation(buffer_pool.clone(), db_oid, &rel_name)?;
+            let pg_class = catalog::get_pg_class_relation(buffer_pool, db_oid, &rel_name)?;
 
             let tuple_desc = Arc::new(catalog::tuple_desc_from_relation(
-                buffer_pool.clone(),
+                buffer_pool,
                 db_oid,
                 &rel_name,
             )?);
@@ -139,7 +139,7 @@ fn create_plan_from_select(
 }
 
 fn create_seq_scan(
-    buffer_pool: BufferPool,
+    buffer_pool: &BufferPool,
     db_oid: &Oid,
     rel_name: &str,
     pg_class_rel: &PgClass,

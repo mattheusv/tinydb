@@ -47,7 +47,7 @@ pub struct HeapScanner {
 
 impl HeapScanner {
     /// Create a new heap tuple iterator over the given relation.
-    pub fn new(buffer_pool: BufferPool, rel: &Relation) -> Result<Self> {
+    pub fn new(buffer_pool: &BufferPool, rel: &Relation) -> Result<Self> {
         // TODO: Iterate over all pages on relation
         let buffer = buffer_pool.fetch_buffer(rel, 1)?;
 
@@ -55,7 +55,7 @@ impl HeapScanner {
         let item_id_data = storage::item_id_data_from_page(&page)?;
 
         Ok(Self {
-            buffer_pool,
+            buffer_pool: buffer_pool.clone(),
             buffer: Some(buffer),
             item_id_data: vec![0; ITEM_ID_SIZE],
             item_id_data_cursor: Cursor::new(item_id_data.to_vec()),

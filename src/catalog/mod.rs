@@ -28,13 +28,13 @@ pub enum Error {
 
 /// Return the tuple description of the given relation name.
 pub fn tuple_desc_from_relation(
-    buffer_pool: BufferPool,
+    buffer_pool: &BufferPool,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<TupleDesc> {
     let pg_attribute = access::open_pg_attribute_relation(db_oid);
 
-    let pg_class_rel = get_pg_class_relation(buffer_pool.clone(), db_oid, rel_name)?;
+    let pg_class_rel = get_pg_class_relation(buffer_pool, db_oid, rel_name)?;
 
     let mut attributes = Vec::new();
 
@@ -51,7 +51,7 @@ pub fn tuple_desc_from_relation(
 
 /// Return the pg class tuple from the given relation name.
 pub fn get_pg_class_relation(
-    buffer_pool: BufferPool,
+    buffer_pool: &BufferPool,
     db_oid: &Oid,
     rel_name: &str,
 ) -> Result<PgClass> {
@@ -77,7 +77,7 @@ pub fn get_pg_class_relation(
 }
 
 /// Return the database oid for the given database name.
-pub fn get_datase_oid(buffer_pool: BufferPool, dbname: &str) -> Result<Oid> {
+pub fn get_datase_oid(buffer_pool: &BufferPool, dbname: &str) -> Result<Oid> {
     let pg_database_rel = access::open_pg_database_relation();
 
     let mut heap = HeapScanner::new(buffer_pool, &pg_database_rel)?;

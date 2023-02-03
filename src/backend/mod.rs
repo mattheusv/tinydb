@@ -121,7 +121,7 @@ impl Backend {
             let startup_message = connection.startup_message().await?;
 
             match executor_config_from_startup_parameters(
-                self.buffer_pool.clone(),
+                &self.buffer_pool,
                 startup_message.parameters,
             ) {
                 Ok(config) => {
@@ -204,7 +204,7 @@ pub async fn start(config: &Config, listener: TcpListener, shutdown: impl Future
 ///
 // TODO: Make this HashMap of connection parameters into a struct.
 fn executor_config_from_startup_parameters(
-    buffer_pool: BufferPool,
+    buffer_pool: &BufferPool,
     parameters: HashMap<String, String>,
 ) -> Result<ExecutorConfig> {
     let dbname = parameters
