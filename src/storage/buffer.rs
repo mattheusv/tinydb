@@ -1,6 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::{atomic, Arc},
+    sync::{
+        atomic::{self, Ordering},
+        Arc,
+    },
 };
 
 use anyhow::{bail, Result};
@@ -55,11 +58,12 @@ struct BufferDesc {
     /// Tag identifier.
     tag: BufferTag,
 
-    /// Number of refereces that this buffer had.
-    refcount: usize,
+    /// Number of strong references. Dirty pages will be written back to disk
+    /// once there are no more references.
+    refs: Arc<atomic::AtomicUsize>,
 
     /// Flag informing if buffer should be writen to disk if is dirty or not.
-    is_dirty: bool,
+    is_dirty: Arc<atomic::AtomicBool>,
 
     /// Relation that this buffer belongs. None if buffer is free to use on
     /// buffer pool.
@@ -74,8 +78,8 @@ impl BufferDesc {
         Self {
             id,
             tag,
-            refcount: 0,
-            is_dirty: false,
+            refs: Arc::new(atomic::AtomicUsize::new(0)),
+            is_dirty: Arc::new(atomic::AtomicBool::new(false)),
             rel: None,
             page: Page::default(),
         }
@@ -112,8 +116,7 @@ pub struct BufferPool {
     /// Map of page numers to buffer indexes.
     page_table: Arc<RwLock<HashMap<BufferTag, Buffer>>>,
 
-    /// How many strong references. Dirty pages will be written back to disk
-    /// once there are no more references.
+    /// How many strong references the buffer pool had.
     refs: Arc<atomic::AtomicUsize>,
 }
 
@@ -156,13 +159,13 @@ impl BufferPool {
                     page_num, buffer, rel.rel_name,
                 );
 
-                let buf_desc = self.get_buffer_descriptor(*buffer)?;
-                let bufid = buf_desc.read().unwrap().id;
+                let buf_desc = self.get_buffer_descriptor(buffer)?;
+                let buf_desc = buf_desc.read().unwrap();
 
                 drop(page_table);
                 self.pin_buffer(&buf_desc);
 
-                Ok(bufid)
+                Ok(buf_desc.id)
             }
             None => {
                 debug!(
@@ -173,20 +176,21 @@ impl BufferPool {
 
                 // Find a new buffer id for page.
                 let new_buffer = self.new_free_buffer()?;
-                let new_buf_desc = self.get_buffer_descriptor(new_buffer)?;
+                let new_buf_desc = self.get_buffer_descriptor(&new_buffer)?;
 
                 {
+                    // Crate a short live write mutex for buffer desc.
                     let mut new_buf_desc = new_buf_desc.write().unwrap();
                     new_buf_desc.tag = buf_tag.clone();
-                    new_buf_desc.refcount = 0;
-                    new_buf_desc.is_dirty = false;
+                    new_buf_desc.refs.store(0, Ordering::SeqCst);
+                    new_buf_desc.is_dirty.store(false, atomic::Ordering::SeqCst);
                     new_buf_desc.rel = Some(rel.clone());
-                    // new_buf_desc.page.0.replace([0; PAGE_SIZE]);
                 }
+
+                let new_buf_desc = new_buf_desc.read().unwrap();
 
                 // Read page from disk and store inside buffer descriptor.
                 {
-                    let new_buf_desc = new_buf_desc.read().unwrap();
                     let mut smgr = self.smgr.lock().unwrap();
                     smgr.read(rel, page_num, &new_buf_desc.page)?;
                 }
@@ -208,7 +212,7 @@ impl BufferPool {
     /// Return error if the page could not be found in the page table, None
     /// otherwise.
     pub fn flush_buffer(&self, buffer: &Buffer) -> Result<()> {
-        let buf_desc = self.get_buffer_descriptor(*buffer)?;
+        let buf_desc = self.get_buffer_descriptor(buffer)?;
         let buf_desc = buf_desc.read().unwrap();
         debug!(
             "flushing buffer {} of relation {} to disk",
@@ -226,7 +230,7 @@ impl BufferPool {
     /// Return the page contents from a buffer.
     pub fn get_page(&self, buffer: &Buffer) -> Result<Page> {
         Ok(self
-            .get_buffer_descriptor(*buffer)?
+            .get_buffer_descriptor(buffer)?
             .read()
             .unwrap()
             .page
@@ -289,10 +293,10 @@ impl BufferPool {
 
         debug!("page {} was chosen for victim", buffer);
 
-        let buf_desc = self.get_buffer_descriptor(buffer)?;
+        let buf_desc = self.get_buffer_descriptor(&buffer)?;
         let buf_desc = buf_desc.read().unwrap();
 
-        if buf_desc.is_dirty {
+        if buf_desc.is_dirty.load(Ordering::SeqCst) {
             debug!(
                 "flusing dirty page {} to disk before victim",
                 buf_desc.tag.page_number,
@@ -306,15 +310,15 @@ impl BufferPool {
         Ok(buffer)
     }
 
-    fn get_buffer_descriptor(&self, buffer: Buffer) -> Result<Arc<RwLock<BufferDesc>>> {
+    fn get_buffer_descriptor(&self, buffer: &Buffer) -> Result<Arc<RwLock<BufferDesc>>> {
         let pages = self.pages.read().unwrap();
         Ok(pages.get(buffer - 1).unwrap().clone())
     }
 
     /// Make buffer unavailable for replacement.
-    fn pin_buffer(&self, buffer: &Arc<RwLock<BufferDesc>>) {
-        let mut buffer = buffer.write().unwrap();
-        buffer.refcount += 1;
+    fn pin_buffer(&self, buffer: &BufferDesc) {
+        let refs = buffer.refs.fetch_add(1, Ordering::SeqCst);
+        log::trace!("page {} referenced; original_ref: {}", buffer.id, refs);
         self.lru.lock().unwrap().pin(&buffer.id);
     }
 
@@ -323,14 +327,16 @@ impl BufferPool {
     ///
     /// Return error if the buffer does not exists on buffer pool, None
     /// otherwise.
-    pub fn unpin_buffer(&self, buffer: Buffer, is_dirty: bool) -> Result<()> {
+    pub fn unpin_buffer(&self, buffer: &Buffer, is_dirty: bool) -> Result<()> {
         let buf_desc = self.get_buffer_descriptor(buffer)?;
-        let mut buf_desc = buf_desc.write().unwrap();
+        let buf_desc = buf_desc.read().unwrap();
 
-        buf_desc.is_dirty = buf_desc.is_dirty || is_dirty;
-        buf_desc.refcount -= 1;
+        // Change the is_dirty flag to false only if the current value is false.
+        buf_desc.is_dirty.fetch_or(is_dirty, Ordering::SeqCst);
+        let refs = buf_desc.refs.fetch_sub(1, Ordering::SeqCst);
+        log::trace!("page {} de-referenced; original_ref: {}", buf_desc.id, refs);
 
-        if buf_desc.refcount == 0 {
+        if self.refs.load(Ordering::SeqCst) == 0 {
             self.lru.lock().unwrap().unpin(&buffer);
         }
         Ok(())
@@ -339,7 +345,7 @@ impl BufferPool {
     // TODO: call flush_buffer instead of duplicate the code.
     pub fn flush_all_buffers(&self) -> Result<()> {
         for buffer in self.page_table.read().unwrap().values() {
-            let buf_desc = self.get_buffer_descriptor(*buffer)?;
+            let buf_desc = self.get_buffer_descriptor(buffer)?;
             let buf_desc = buf_desc.read().unwrap();
             debug!(
                 "flushing buffer {} of relation {} to disk",
@@ -362,11 +368,11 @@ impl BufferPool {
 
 impl Drop for BufferPool {
     fn drop(&mut self) {
-        let refs = self.refs.fetch_sub(1, atomic::Ordering::SeqCst);
+        let refs = self.refs.fetch_sub(1, Ordering::SeqCst);
 
         log::trace!("buffer Pool de-referenced; original_ref: {} ", refs);
 
-        if self.refs.load(atomic::Ordering::SeqCst) == 0 {
+        if self.refs.load(Ordering::SeqCst) == 0 {
             log::info!("flushing all buffers to disk");
             self.flush_all_buffers()
                 .expect("failed to flush all buffers to disk");
@@ -376,7 +382,7 @@ impl Drop for BufferPool {
 
 impl Clone for BufferPool {
     fn clone(&self) -> Self {
-        let refs = &self.refs.fetch_add(1, atomic::Ordering::SeqCst);
+        let refs = &self.refs.fetch_add(1, Ordering::SeqCst);
 
         log::trace!("buffer Pool referenced; original_ref: {} ", refs);
 

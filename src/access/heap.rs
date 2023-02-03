@@ -21,7 +21,7 @@ pub fn heap_insert(buffer_pool: &BufferPool, rel: &Relation, tuple: &HeapTuple) 
 
     page_add_item(&page, &tuple.encode()?)?;
 
-    buffer_pool.unpin_buffer(buffer, true)?;
+    buffer_pool.unpin_buffer(&buffer, true)?;
 
     Ok(())
 }
@@ -74,7 +74,8 @@ impl HeapScanner {
                     // and return None.
                     //
                     // TODO: Check if there is more buffers to read.
-                    self.buffer_pool.unpin_buffer(buffer, false /* is_dirty*/)?;
+                    self.buffer_pool
+                        .unpin_buffer(&buffer, false /* is_dirty*/)?;
                     return Ok(None);
                 }
 

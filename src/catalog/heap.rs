@@ -105,7 +105,7 @@ pub fn initialize_default_page_header(buffer: &BufferPool, rel: &Relation) -> Re
     bincode::serialize_into(&mut page_writer, &PageHeader::default())?;
 
     buffer.flush_buffer(&buf_id)?;
-    buffer.unpin_buffer(buf_id, true)?;
+    buffer.unpin_buffer(&buf_id, true)?;
 
     debug!(
         "initialized default pager header data for relation: {}",
