@@ -1,13 +1,11 @@
 use std::{
-    env, fs, io,
+    fs, io,
     path::Path,
     process::{Child, Command},
 };
 
 #[test]
 fn test_regress() -> anyhow::Result<()> {
-    build()?;
-
     let sql_entries = fs::read_dir(Path::new("tests").join("regress").join("sql"))
         .expect("Failed to read regress sql dir")
         .map(|res| res.map(|e| e.path()))
@@ -77,31 +75,19 @@ fn test_regress() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build() -> anyhow::Result<()> {
-    let mut child = Command::new("cargo").arg("build").spawn()?;
-    let exit_status = child.wait()?;
-    if !exit_status.success() {
-        anyhow::bail!("failed to compile tinydb binary");
-    }
-    Ok(())
-}
-
 struct TinyDBCommand {
     cmd: Child,
 }
 
 impl TinyDBCommand {
     fn start(data_dir: &Path) -> anyhow::Result<Self> {
-        let cmd = Command::new(
-            env::current_dir()?
-                .join("target")
-                .join("debug")
-                .join("tinydb"),
-        )
-        .arg("--init")
-        .arg("--data-dir")
-        .arg(data_dir)
-        .spawn()?;
+        let cmd = Command::new("cargo")
+            .arg("run")
+            .arg("--")
+            .arg("--init")
+            .arg("--data-dir")
+            .arg(data_dir)
+            .spawn()?;
 
         Ok(Self { cmd })
     }
