@@ -138,7 +138,7 @@ impl BufferPool {
             smgr: Arc::new(Mutex::new(smgr)),
             lru: Arc::new(Mutex::new(LRU::new(size))),
             page_table: Arc::new(RwLock::new(HashMap::with_capacity(size))),
-            refs: Arc::new(atomic::AtomicUsize::new(0)),
+            refs: Arc::new(atomic::AtomicUsize::new(1)),
         }
     }
 
