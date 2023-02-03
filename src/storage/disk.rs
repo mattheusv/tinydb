@@ -151,6 +151,7 @@ impl Disk {
 
         let page = page.0.read().unwrap();
         let count = file.write(page.as_ref())?;
+        file.flush()?;
         debug!("wrote {} bytes to page {}", count, number);
 
         Ok(())
@@ -180,6 +181,7 @@ impl Disk {
         let mut file = self.file.lock().unwrap();
         file.seek(SeekFrom::Start(0))?;
         file.write(&header.serialize()?)?;
+        file.flush()?;
         Ok(())
     }
 
