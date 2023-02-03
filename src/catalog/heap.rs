@@ -108,7 +108,7 @@ pub fn initialize_default_page_header(buffer: &BufferPool, rel: &Relation) -> Re
     buffer.unpin_buffer(buf_id, true)?;
 
     debug!(
-        "Initialized default pager header data for relation: {}",
+        "initialized default pager header data for relation: {}",
         rel.rel_name
     );
 

@@ -152,7 +152,7 @@ impl BufferPool {
         match buffer {
             Some(buffer) => {
                 debug!(
-                    "Page {} exists on memory on buffer {} for relation {}",
+                    "page {} exists on memory on buffer {} for relation {}",
                     page_num, buffer, rel.rel_name,
                 );
 
@@ -166,7 +166,7 @@ impl BufferPool {
             }
             None => {
                 debug!(
-                    "Fething page {} from disk for relation {}",
+                    "fething page {} from disk for relation {}",
                     page_num, rel.rel_name
                 );
                 drop(page_table);
@@ -211,7 +211,7 @@ impl BufferPool {
         let buf_desc = self.get_buffer_descriptor(*buffer)?;
         let buf_desc = buf_desc.read().unwrap();
         debug!(
-            "Flushing buffer {} of relation {} to disk",
+            "flushing buffer {} of relation {} to disk",
             buffer,
             buf_desc.relation()?.rel_name
         );
@@ -248,7 +248,7 @@ impl BufferPool {
         drop(smgr);
 
         debug!(
-            "New page {} allocated for relation {}",
+            "new page {} allocated for relation {}",
             page_num, rel.rel_name
         );
         self.fetch_buffer(rel, page_num)
@@ -287,14 +287,14 @@ impl BufferPool {
             .victim()
             .expect("replacer does not contain any page id to victim");
 
-        debug!("Page {} was chosen for victim", buffer);
+        debug!("page {} was chosen for victim", buffer);
 
         let buf_desc = self.get_buffer_descriptor(buffer)?;
         let buf_desc = buf_desc.read().unwrap();
 
         if buf_desc.is_dirty {
             debug!(
-                "Flusing dirty page {} to disk before victim",
+                "flusing dirty page {} to disk before victim",
                 buf_desc.tag.page_number,
             );
             self.flush_buffer(&buffer)?;
@@ -342,7 +342,7 @@ impl BufferPool {
             let buf_desc = self.get_buffer_descriptor(*buffer)?;
             let buf_desc = buf_desc.read().unwrap();
             debug!(
-                "Flushing buffer {} of relation {} to disk",
+                "flushing buffer {} of relation {} to disk",
                 buffer,
                 buf_desc.relation()?.rel_name
             );
@@ -364,7 +364,7 @@ impl Drop for BufferPool {
     fn drop(&mut self) {
         let refs = self.refs.fetch_sub(1, atomic::Ordering::SeqCst);
 
-        log::trace!("Buffer Pool de-referenced; original_ref: {} ", refs);
+        log::trace!("buffer Pool de-referenced; original_ref: {} ", refs);
 
         if self.refs.load(atomic::Ordering::SeqCst) == 0 {
             log::info!("flushing all buffers to disk");
@@ -378,7 +378,7 @@ impl Clone for BufferPool {
     fn clone(&self) -> Self {
         let refs = &self.refs.fetch_add(1, atomic::Ordering::SeqCst);
 
-        log::trace!("Buffer Pool referenced; original_ref: {} ", refs);
+        log::trace!("buffer Pool referenced; original_ref: {} ", refs);
 
         Self {
             smgr: self.smgr.clone(),

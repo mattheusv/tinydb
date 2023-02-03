@@ -135,7 +135,7 @@ impl Disk {
 
         let mut page = page.0.write().unwrap();
         let count = file.read(page.as_mut())?;
-        debug!("Read {} bytes from page {}", count, page_number);
+        debug!("read {} bytes from page {}", count, page_number);
 
         Ok(())
     }
@@ -151,7 +151,7 @@ impl Disk {
 
         let page = page.0.read().unwrap();
         let count = file.write(page.as_ref())?;
-        debug!("Wrote {} bytes to page {}", count, number);
+        debug!("wrote {} bytes to page {}", count, number);
 
         Ok(())
     }
