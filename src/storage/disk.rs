@@ -150,9 +150,9 @@ impl Disk {
         file.seek(SeekFrom::Start(self.offset(number)))?;
 
         let page = page.0.read().unwrap();
-        let count = file.write(page.as_ref())?;
+        file.write_all(page.as_ref())?;
         file.flush()?;
-        debug!("wrote {} bytes to page {}", count, number);
+        debug!("wrote page {} to disk", number);
 
         Ok(())
     }
@@ -180,7 +180,7 @@ impl Disk {
     fn write_header(&self, header: &Header) -> Result<()> {
         let mut file = self.file.lock().unwrap();
         file.seek(SeekFrom::Start(0))?;
-        file.write(&header.serialize()?)?;
+        file.write_all(&header.serialize()?)?;
         file.flush()?;
         Ok(())
     }
