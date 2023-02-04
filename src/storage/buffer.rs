@@ -342,20 +342,9 @@ impl BufferPool {
         Ok(())
     }
 
-    // TODO: call flush_buffer instead of duplicate the code.
     pub fn flush_all_buffers(&self) -> Result<()> {
         for buffer in self.page_table.read().unwrap().values() {
-            let buf_desc = self.get_buffer_descriptor(buffer)?;
-            let buf_desc = buf_desc.read().unwrap();
-            debug!(
-                "flushing buffer {} of relation {} to disk",
-                buffer,
-                buf_desc.relation()?.rel_name
-            );
-            let page = self.get_page(&buffer)?;
-
-            let mut smgr = self.smgr.lock().unwrap();
-            smgr.write(&buf_desc.relation()?, buf_desc.tag.page_number, &page)?;
+            self.flush_buffer(buffer)?;
         }
         Ok(())
     }
