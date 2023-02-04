@@ -362,7 +362,7 @@ impl Drop for BufferPool {
         log::trace!("buffer Pool de-referenced; original_ref: {} ", refs);
 
         if self.refs.load(Ordering::SeqCst) == 0 {
-            log::info!("flushing all buffers to disk");
+            log::debug!("flushing all buffers to disk");
             self.flush_all_buffers()
                 .expect("failed to flush all buffers to disk");
         }
