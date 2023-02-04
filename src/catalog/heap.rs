@@ -21,7 +21,7 @@ pub fn heap_create(
     rel_name: &str,
     new_rel_oid: Oid,
     tupledesc: &TupleDesc,
-) -> Result<()> {
+) -> Result<Relation> {
     // Create a new relation object for the new heap relation.
     let new_rel = access::open_relation(new_rel_oid, tablespace, db_oid, rel_name);
 
@@ -38,7 +38,7 @@ pub fn heap_create(
     // data
     initialize_default_page_header(buffer, &new_rel)?;
 
-    Ok(())
+    Ok(new_rel)
 }
 
 /// Registers the new relation's schema by adding tuples to pg_attribute.
@@ -104,6 +104,7 @@ pub fn initialize_default_page_header(buffer: &BufferPool, rel: &Relation) -> Re
     let mut page_writer = PageWriter::new(&page);
     bincode::serialize_into(&mut page_writer, &PageHeader::default())?;
 
+    // Force a write to make sure that future fetches of this page see the page header correctly.
     buffer.flush_buffer(&buf_id)?;
     buffer.unpin_buffer(&buf_id, true)?;
 
