@@ -17,9 +17,8 @@ use super::heaptuple::HeapTuple;
 /// Insert a new tuple into a heap page of the given relation.
 pub fn heap_insert(buffer_pool: &BufferPool, rel: &Relation, tuple: &HeapTuple) -> Result<()> {
     let buffer = freespace::get_page_with_free_space(buffer_pool, rel)?;
-    let page = buffer_pool.get_page(&buffer)?;
 
-    page_add_item(&page, &tuple.encode()?)?;
+    page_add_item(&buffer.page, &tuple.encode()?)?;
 
     buffer_pool.unpin_buffer(&buffer, true)?;
 
@@ -51,8 +50,7 @@ impl HeapScanner {
         // TODO: Iterate over all pages on relation
         let buffer = buffer_pool.fetch_buffer(rel, 1)?;
 
-        let page = buffer_pool.get_page(&buffer)?;
-        let item_id_data = storage::item_id_data_from_page(&page)?;
+        let item_id_data = storage::item_id_data_from_page(&buffer.page)?;
 
         Ok(Self {
             buffer_pool: buffer_pool.clone(),
@@ -66,7 +64,7 @@ impl HeapScanner {
     /// from current buffer, next_tuple will check if there is more buffer's to
     /// be readed, if not, return None.
     pub fn next_tuple(&mut self) -> Result<Option<HeapTuple>> {
-        match self.buffer {
+        match &self.buffer {
             Some(buffer) => {
                 let size = self.item_id_data_cursor.read(&mut self.item_id_data)?;
                 if size == 0 {
@@ -79,13 +77,11 @@ impl HeapScanner {
                     return Ok(None);
                 }
 
-                let page = self.buffer_pool.get_page(&buffer)?;
-
                 // Deserialize a single ItemId from the list item_id_data.
                 let item_id = bincode::deserialize::<ItemId>(&self.item_id_data)?;
 
                 // Slice the raw page to get a refenrece to a tuple inside the page.
-                let data = storage::value_from_page_item(&page, &item_id)?;
+                let data = storage::value_from_page_item(&buffer.page, &item_id)?;
                 let tuple = HeapTuple::decode(&data)?;
 
                 self.item_id_data = vec![0; ITEM_ID_SIZE];
