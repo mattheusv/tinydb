@@ -71,7 +71,7 @@ pub fn item_id_data_from_page(page: &Page) -> anyhow::Result<Vec<u8>> {
     let page_header = PageHeader::new(page)?;
 
     let page = page.0.read().unwrap();
-    Ok(page[PAGE_HEADER_SIZE..page_header.start_free_space as usize].to_vec())
+    Ok(page[PAGE_HEADER_SIZE..page_header.pd_lower as usize].to_vec())
 }
 
 /// Return the raw value of the given item inside the given page.
