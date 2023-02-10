@@ -122,6 +122,16 @@ mod tests {
     }
 
     #[test]
+    fn test_default_page_header_values() {
+        let header = PageHeader::default();
+
+        assert!(header.end_free_space <= PAGE_SIZE as u16,);
+        assert!(header.start_free_space > (PAGE_HEADER_SIZE - ITEM_ID_SIZE) as u16);
+        assert!(header.start_free_space < PAGE_SIZE as u16);
+        assert!(header.end_free_space > header.start_free_space);
+    }
+
+    #[test]
     fn test_item_id_size() {
         assert_eq!(ITEM_ID_SIZE, 4, "Item id size should have 4 bytes long");
     }
