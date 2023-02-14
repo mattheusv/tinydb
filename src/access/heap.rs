@@ -58,7 +58,7 @@ impl HeapScanner {
             buffer_pool: buffer_pool.clone(),
             buffer: Some(buffer),
             item_id_data: vec![0; ITEM_ID_SIZE],
-            item_id_data_cursor: Cursor::new(item_id_data.to_vec()),
+            item_id_data_cursor: Cursor::new(item_id_data),
         })
     }
 
