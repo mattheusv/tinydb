@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::{
     io::{self, Seek},
     mem::size_of,
@@ -58,6 +58,12 @@ pub const ITEM_ID_SIZE: usize = size_of::<ItemId>();
 /// to point to the new offsets after the item is inserted on in-memory page.
 pub fn page_add_item(page: &Page, item: &Vec<u8>) -> Result<()> {
     let mut header = PageHeader::new(page)?;
+
+    if header.start_free_space < PAGE_HEADER_SIZE as u16
+        || header.start_free_space > header.end_free_space
+    {
+        bail!("corrupted page pointers: {:#?}", header);
+    }
 
     // Select the offset number to place the new item
     let item_id_offset = header.start_free_space as usize;
