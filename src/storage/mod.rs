@@ -71,15 +71,16 @@ pub fn item_id_data_from_page(page: &Page) -> anyhow::Result<Vec<ItemId>> {
     let page_header = PageHeader::new(page)?;
 
     let page = page.0.read().unwrap();
+    let line_pointers_data = &page[PAGE_HEADER_SIZE..(page_header.start_free_space) as usize];
 
     // Pre allocate the line pointers array.
-    let mut line_pointers = Vec::with_capacity(page.len() / ITEM_ID_SIZE);
+    let mut line_pointers = Vec::with_capacity(line_pointers_data.len() / ITEM_ID_SIZE);
 
     // Reuse the same block of memory to parse the item id.
     let mut item_id = vec![0; ITEM_ID_SIZE];
 
     // Create a cursor to consume the line pointer binary array.
-    let mut cursor = Cursor::new(&page[PAGE_HEADER_SIZE..page_header.start_free_space as usize]);
+    let mut cursor = Cursor::new(line_pointers_data);
     loop {
         let size = cursor.read(&mut item_id)?;
         if size == 0 {
