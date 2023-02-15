@@ -75,7 +75,7 @@ pub fn page_add_item(page: &Page, item: &Vec<u8>) -> Result<()> {
 
     // Adjust the page header
     header.start_free_space = (item_id_offset + size_of::<ItemId>()) as u16;
-    header.end_free_space = item_id.offset;
+    header.end_free_space = item_id.offset - 1;
 
     // Write the adjusted page header at the in-memory page.
     page_writer.seek(io::SeekFrom::Start(0))?;
@@ -110,9 +110,9 @@ mod tests {
             header.start_free_space, 8
         );
         assert_eq!(
-            header.end_free_space, 8188,
+            header.end_free_space, 8187,
             "Expected end free space {}, got {}",
-            header.end_free_space, 8188
+            8187, header.end_free_space,
         );
 
         Ok(())
