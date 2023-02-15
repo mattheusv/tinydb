@@ -1,4 +1,4 @@
-use std::io::{Cursor, Read};
+use std::vec::IntoIter;
 
 use crate::storage;
 use crate::storage::buffer::Buffer;
@@ -6,7 +6,7 @@ use crate::{
     relation::Relation,
     storage::{
         freespace,
-        page::{page_add_item, ItemId, ITEM_ID_SIZE},
+        page::{page_add_item, ItemId},
         BufferPool,
     },
 };
@@ -33,11 +33,7 @@ pub struct HeapScanner {
     buffer_pool: BufferPool,
 
     /// Cursor used to read item id pointers.
-    item_id_data_cursor: Cursor<Vec<u8>>,
-
-    /// Holds the raw binary data used to deserialize a item
-    /// id object.
-    item_id_data: Vec<u8>,
+    item_id_iter: IntoIter<ItemId>,
 
     /// Current buffer used to scan. None if there is no more
     /// buffer to scan on page.
@@ -55,8 +51,7 @@ impl HeapScanner {
         Ok(Self {
             buffer_pool: buffer_pool.clone(),
             buffer: Some(buffer),
-            item_id_data: vec![0; ITEM_ID_SIZE],
-            item_id_data_cursor: Cursor::new(item_id_data),
+            item_id_iter: item_id_data.into_iter(),
         })
     }
 
@@ -66,27 +61,24 @@ impl HeapScanner {
     pub fn next_tuple(&mut self) -> Result<Option<HeapTuple>> {
         match &self.buffer {
             Some(buffer) => {
-                let size = self.item_id_data_cursor.read(&mut self.item_id_data)?;
-                if size == 0 {
-                    // All item data pointers was readed, unpin the buffer
-                    // and return None.
-                    //
-                    // TODO: Check if there is more buffers to read.
-                    self.buffer_pool
-                        .unpin_buffer(&buffer, false /* is_dirty*/)?;
-                    return Ok(None);
+                match self.item_id_iter.next() {
+                    Some(item_id) => {
+                        // Slice the raw page to get a refenrece to a tuple inside the page.
+                        let data = storage::value_from_page_item(&buffer.page, &item_id)?;
+                        let tuple = HeapTuple::decode(&data)?;
+
+                        Ok(Some(tuple))
+                    }
+                    None => {
+                        // All item data pointers was readed, unpin the buffer
+                        // and return None.
+                        //
+                        // TODO: Check if there is more buffers to read.
+                        self.buffer_pool
+                            .unpin_buffer(&buffer, false /* is_dirty*/)?;
+                        return Ok(None);
+                    }
                 }
-
-                // Deserialize a single ItemId from the list item_id_data.
-                let item_id = bincode::deserialize::<ItemId>(&self.item_id_data)?;
-
-                // Slice the raw page to get a refenrece to a tuple inside the page.
-                let data = storage::value_from_page_item(&buffer.page, &item_id)?;
-                let tuple = HeapTuple::decode(&data)?;
-
-                self.item_id_data = vec![0; ITEM_ID_SIZE];
-
-                Ok(Some(tuple))
             }
             // There is no more buffer's to scan.
             None => Ok(None),

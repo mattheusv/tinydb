@@ -6,11 +6,11 @@ pub mod relation_locator;
 pub mod smgr;
 
 use std::{
-    io::{self, Seek, Write},
+    io::{self, Cursor, Read, Seek, Write},
     sync::{Arc, RwLock},
 };
 
-use self::page::{ItemId, PageHeader, PAGE_HEADER_SIZE};
+use self::page::{ItemId, PageHeader, ITEM_ID_SIZE, PAGE_HEADER_SIZE};
 
 pub use buffer::BufferPool;
 
@@ -67,11 +67,30 @@ impl PartialEq for Page {
 }
 
 /// Return the array of item identifiers pointing to the actual items.
-pub fn item_id_data_from_page(page: &Page) -> anyhow::Result<Vec<u8>> {
+pub fn item_id_data_from_page(page: &Page) -> anyhow::Result<Vec<ItemId>> {
     let page_header = PageHeader::new(page)?;
 
     let page = page.0.read().unwrap();
-    Ok(page[PAGE_HEADER_SIZE..page_header.start_free_space as usize].to_vec())
+
+    // Pre allocate the line pointers array.
+    let mut line_pointers = Vec::with_capacity(page.len() / ITEM_ID_SIZE);
+
+    // Reuse the same block of memory to parse the item id.
+    let mut item_id = vec![0; ITEM_ID_SIZE];
+
+    // Create a cursor to consume the line pointer binary array.
+    let mut cursor = Cursor::new(&page[PAGE_HEADER_SIZE..page_header.start_free_space as usize]);
+    loop {
+        let size = cursor.read(&mut item_id)?;
+        if size == 0 {
+            break;
+        }
+
+        let item_id = bincode::deserialize(&item_id)?;
+        line_pointers.push(item_id);
+    }
+
+    Ok(line_pointers)
 }
 
 /// Return the raw value of the given item inside the given page.
