@@ -19,8 +19,6 @@ pub struct PageHeader {
 
     /// Offset to end of free space
     pub end_free_space: u16,
-
-    _padding: [u8; 20],
 }
 
 impl PageHeader {
@@ -36,7 +34,6 @@ impl Default for PageHeader {
         Self {
             start_free_space: PAGE_HEADER_SIZE as u16,
             end_free_space: PAGE_SIZE as u16,
-            _padding: [0; 20],
         }
     }
 }
@@ -108,9 +105,9 @@ mod tests {
 
         let header = PageHeader::new(&page)?;
         assert_eq!(
-            header.start_free_space, 28,
+            header.start_free_space, 8,
             "Expected start free space {}, got {}",
-            header.start_free_space, 28
+            header.start_free_space, 8
         );
         assert_eq!(
             header.end_free_space, 8188,
@@ -139,8 +136,8 @@ mod tests {
     #[test]
     fn test_page_header_size() {
         assert_eq!(
-            PAGE_HEADER_SIZE, 24,
-            "Page header size should have 24 bytes long"
+            PAGE_HEADER_SIZE, 4,
+            "Page header size should have 4 bytes long"
         );
     }
 }
