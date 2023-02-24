@@ -175,7 +175,8 @@ where
                             }
                         },
                         None => {
-                            buf_row.write_u32(0).await?;
+                            // NULL is encoded as -1; all other values have a length prefix.
+                            buf_row.write_i32(-1).await?;
                         }
                     }
                 }
