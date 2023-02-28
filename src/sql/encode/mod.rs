@@ -13,27 +13,19 @@ use crate::{
 pub fn encode(encode_to: &mut Datums, value: &ast::Value, attr: &PgAttribute) -> Result<()> {
     match value {
         ast::Value::Number(value, _) => {
-            let value = value.parse::<i32>()?;
-            bincode::serialize_into(encode_to, &value)?;
+            encode_i32(encode_to, &value.parse::<i32>()?)?;
         }
         ast::Value::SingleQuotedString(s) => {
             if attr.attlen >= 0 && (s.len() > attr.attlen as usize) {
                 bail!("value too long for type character varying({})", attr.attlen);
             }
-            let varlena = Varlena::try_from(s)?;
-
-            // TODO: Try to understand why I can't use bincode::serialize_into(encode_to, &varlena)
-            // here.
-            // Seems that using serialize_into the datums that are appended is splited between
-            // multiple vectors, which cause erros when reading.
-            let data = bincode::serialize(&varlena)?;
-            encode_to.push(Some(data));
+            encode_string(encode_to, &s)?;
         }
         ast::Value::Null => {
             encode_to.push(None);
         }
         ast::Value::Boolean(value) => {
-            bincode::serialize_into(encode_to, value)?;
+            encode_boolean(encode_to, &value)?;
         }
         _ => bail!("Unsupported value {}", value.to_string()),
     };
@@ -46,11 +38,46 @@ pub fn encode(encode_to: &mut Datums, value: &ast::Value, attr: &PgAttribute) ->
 // that represents a SQL value.
 pub fn decode(datum: &Datum, typ: Oid) -> Result<String> {
     match typ {
-        pg_type::INT_OID => Ok(bincode::deserialize::<i32>(&datum)?.to_string()),
-        pg_type::VARCHAR_OID => Ok(bincode::deserialize::<String>(&datum)?),
-        pg_type::BOOL_OID => Ok(bincode::deserialize::<bool>(&datum)?.to_string()),
+        pg_type::INT_OID => Ok(decode_i32(datum)?.to_string()),
+        pg_type::VARCHAR_OID => decode_string(datum),
+        pg_type::BOOL_OID => Ok(decode_boolean(datum)?.to_string()),
         _ => bail!("decode: Unsupported type to decode"),
     }
+}
+/// Encode a i32 value into a list of datum.
+pub fn encode_i32(encode_to: &mut Datums, v: &i32) -> Result<()> {
+    bincode::serialize_into(encode_to, &v)?;
+    Ok(())
+}
+
+/// Decode the given datum as a i32.
+pub fn decode_i32(datum: &Datum) -> Result<i32> {
+    Ok(bincode::deserialize::<i32>(&datum)?)
+}
+
+/// Encode a bool value into a list of datum.
+pub fn encode_boolean(encode_to: &mut Datums, v: &bool) -> Result<()> {
+    bincode::serialize_into(encode_to, &v)?;
+    Ok(())
+}
+
+/// Decode the given datum as a boolean.
+pub fn decode_boolean(datum: &Datum) -> Result<bool> {
+    Ok(bincode::deserialize::<bool>(&datum)?)
+}
+
+/// Encode a string value into a list of datum.
+pub fn encode_string(encode_to: &mut Datums, v: &String) -> Result<()> {
+    let varlena = Varlena::try_from(v)?;
+
+    let data = bincode::serialize(&varlena)?;
+    encode_to.push(Some(data));
+    Ok(())
+}
+
+/// Decode the given datum as a string.
+pub fn decode_string(datum: &Datum) -> Result<String> {
+    Ok(bincode::deserialize::<String>(&datum)?)
 }
 
 /// Variable-length datatypes all share the 'struct varlena' header.
