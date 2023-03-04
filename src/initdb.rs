@@ -57,11 +57,11 @@ fn init_pg_database(buffer: &BufferPool, db_oid: &Oid) -> Result<()> {
     heap_insert(
         buffer,
         &pg_database,
-        &HeapTuple::with_default_header(&PgDatabase {
+        &HeapTuple::with_default_header(bincode::serialize(&PgDatabase {
             oid: TINYDB_OID,
             datname: String::from("tinydb"),
             dattablespace: DEFAULTTABLESPACE_OID,
-        })?,
+        })?)?,
     )?;
 
     Ok(())
@@ -131,7 +131,7 @@ fn init_pg_tablespace(buffer: &BufferPool, db_oid: &Oid) -> Result<()> {
     heap_insert(
         buffer,
         &pg_tablespace,
-        &HeapTuple::with_default_header(&pg_default)?,
+        &HeapTuple::with_default_header(bincode::serialize(&pg_default)?)?,
     )?;
 
     let pg_global = PgTablespace {
@@ -142,7 +142,7 @@ fn init_pg_tablespace(buffer: &BufferPool, db_oid: &Oid) -> Result<()> {
     heap_insert(
         buffer,
         &pg_tablespace,
-        &HeapTuple::with_default_header(&pg_global)?,
+        &HeapTuple::with_default_header(bincode::serialize(&pg_global)?)?,
     )?;
     Ok(())
 }

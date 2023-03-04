@@ -87,13 +87,10 @@ impl HeapTupleHeader {
 
 impl HeapTuple {
     /// Create a new heap tuple with the given data and default header values.
-    pub fn with_default_header<T>(data: T) -> Result<Self>
-    where
-        T: serde::Serialize,
-    {
+    pub fn with_default_header(data: Vec<u8>) -> Result<Self> {
         Ok(Self {
             header: HeapTupleHeader::default(),
-            data: bincode::serialize(&data)?,
+            data,
         })
     }
     /// Construct a heap tuple for the given vector of possible datum values.

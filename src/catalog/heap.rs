@@ -5,6 +5,7 @@ use crate::{
         heaptuple::{HeapTuple, TupleDesc},
     },
     relation::Relation,
+    sql::encode::relation::RelationEncoder,
     storage::{page::PageHeader, BufferPool, PageWriter},
     Oid,
 };
@@ -55,7 +56,7 @@ fn add_new_attribute_tuples(
         heap_insert(
             buffer,
             &pg_attribute,
-            &HeapTuple::with_default_header(&attr)?,
+            &HeapTuple::with_default_header(RelationEncoder::new(attr).encode()?)?,
         )?;
     }
 
@@ -79,12 +80,12 @@ fn add_new_relation_tuple(
     heap_insert(
         buffer,
         pg_class,
-        &HeapTuple::with_default_header(&PgClass {
+        &HeapTuple::with_default_header(bincode::serialize(&PgClass {
             oid: new_rel.locator.oid,
             relname: new_rel.rel_name.clone(),
             reltablespace: new_rel.locator.tablespace,
             relisshared: new_rel.locator.tablespace == GLOBALTABLESPACE_OID,
-        })?,
+        })?)?,
     )?;
 
     Ok(())

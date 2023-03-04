@@ -3,6 +3,7 @@ use anyhow::{bail, Result};
 use crate::{
     access::{self, heap::HeapScanner, heaptuple::TupleDesc},
     new_object_id,
+    sql::encode::relation::RelationDecoder,
     storage::{relation_locator::relation_path, BufferPool},
     Oid,
 };
@@ -40,7 +41,7 @@ pub fn tuple_desc_from_relation(
 
     let mut heap = HeapScanner::new(buffer_pool, &pg_attribute)?;
     while let Some(tuple) = heap.next_tuple()? {
-        let attr = bincode::deserialize::<PgAttribute>(&tuple.data)?;
+        let attr = RelationDecoder::<PgAttribute>::decode(&tuple.data)?;
         if attr.attrelid == pg_class_rel.oid {
             attributes.push(attr);
         }

@@ -1,9 +1,4 @@
-use crate::{
-    access::heaptuple::TupleDesc,
-    sql::encode::{varlena_deserializer, varlena_serializer},
-    Oid,
-};
-use serde::{Deserialize, Serialize};
+use crate::{access::heaptuple::TupleDesc, Oid};
 
 use super::pg_type;
 
@@ -14,14 +9,12 @@ pub const RELATION_NAME: &'static str = "pg_attribute";
 
 /// The catalog pg_attribute stores information about table columns. There will be exactly one pg_attribute row for
 /// every column in every table in the database.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct PgAttribute {
     /// The relation this column belongs to.
     pub attrelid: Oid,
 
     /// The column name.
-    #[serde(deserialize_with = "varlena_deserializer")]
-    #[serde(serialize_with = "varlena_serializer")]
     pub attname: String,
 
     /// The number of the column (start at 1).

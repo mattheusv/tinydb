@@ -1,3 +1,5 @@
+pub mod relation;
+
 use std::{convert::TryFrom, mem::size_of};
 
 use anyhow::{bail, Result};
