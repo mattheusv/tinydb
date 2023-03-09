@@ -6,35 +6,30 @@ use sqlparser::ast;
 
 use crate::{
     catalog::{pg_attribute::PgAttribute, pg_type},
-    Datum, Datums, Oid,
+    Datum, NullableDatum, Oid,
 };
 
 /// Encode the ast value to a Datum representation.
-pub fn encode(encode_to: &mut Datums, value: &ast::Value, attr: &PgAttribute) -> Result<()> {
+pub fn encode(
+    encode_to: &mut Vec<NullableDatum>,
+    value: &ast::Value,
+    attr: &PgAttribute,
+) -> Result<()> {
     match value {
         ast::Value::Number(value, _) => {
             let value = value.parse::<i32>()?;
-            bincode::serialize_into(encode_to, &value)?;
+            encode_to.push(Some(Datum::try_from(value)?))
         }
-        ast::Value::SingleQuotedString(s) => {
-            if attr.attlen >= 0 && (s.len() > attr.attlen as usize) {
+        ast::Value::SingleQuotedString(value) => {
+            if attr.attlen >= 0 && (value.len() > attr.attlen as usize) {
                 bail!("value too long for type character varying({})", attr.attlen);
             }
-            let varlena = Varlena::try_from(s)?;
-
-            // TODO: Try to understand why I can't use bincode::serialize_into(encode_to, &varlena)
-            // here.
-            // Seems that using serialize_into the datums that are appended is splited between
-            // multiple vectors, which cause erros when reading.
-            let data = bincode::serialize(&varlena)?;
-            encode_to.push(Some(data));
+            encode_to.push(Some(Datum::try_from(value)?))
         }
         ast::Value::Null => {
             encode_to.push(None);
         }
-        ast::Value::Boolean(value) => {
-            bincode::serialize_into(encode_to, value)?;
-        }
+        ast::Value::Boolean(value) => encode_to.push(Some(Datum::try_from(value)?)),
         _ => bail!("Unsupported value {}", value.to_string()),
     };
     Ok(())
@@ -103,4 +98,37 @@ where
     let varlena = Varlena::deserialize(deserializer)?;
     let value = bincode::deserialize(&varlena.v_data).unwrap();
     Ok(value)
+}
+
+impl TryFrom<i32> for Datum {
+    type Error = anyhow::Error;
+
+    fn try_from(value: i32) -> std::result::Result<Self, Self::Error> {
+        let datum = Datum::from(bincode::serialize(&value)?);
+        Ok(datum)
+    }
+}
+
+impl TryFrom<&bool> for Datum {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &bool) -> std::result::Result<Self, Self::Error> {
+        let datum = Datum::from(bincode::serialize(&value)?);
+        Ok(datum)
+    }
+}
+
+impl TryFrom<&String> for Datum {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &String) -> std::result::Result<Self, Self::Error> {
+        let varlena = Varlena::try_from(value)?;
+
+        // TODO: Try to understand why I can't use bincode::serialize_into(encode_to, &varlena)
+        // here.
+        // Seems that using serialize_into the datums that are appended is splited between
+        // multiple vectors, which cause erros when reading.
+        let data = bincode::serialize(&varlena)?;
+        Ok(Datum::from(data))
+    }
 }

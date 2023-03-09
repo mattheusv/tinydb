@@ -1,5 +1,4 @@
-use std::ops::Index;
-use std::slice::Iter;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub mod access;
@@ -23,9 +22,6 @@ pub type Oid = u64;
 
 pub const INVALID_OID: Oid = 0;
 
-/// A slice of bytes that represents a value of inside a tuple.
-pub type Datum = Vec<u8>;
-
 /// Atomic counter to increment when allocating new OIDs.
 static OID_COUNTER: AtomicU64 = AtomicU64::new(FIRST_NORMAL_OBJECT_ID);
 
@@ -38,43 +34,25 @@ pub fn new_object_id() -> Oid {
     OID_COUNTER.fetch_add(1, Ordering::SeqCst)
 }
 
-/// An array of nullable Datums.
+/// A slice of bytes that represents a value of inside a tuple.
 ///
-/// This array represents a single tuple row with all posible values.
-///
-/// The values are aligned with the same index of tuple attributes. If the
-/// attribute index is represents by an None it means that this attribute
-/// has a NULL value associated.
-#[derive(Default, Debug)]
-pub struct Datums(Vec<Option<Datum>>);
+/// A reference of datum is always read-only.
+#[derive(Debug, Default)]
+pub struct Datum(Vec<u8>);
 
-impl Datums {
-    /// Appends an Option<Datum> to the back of a collection of datums.
-    pub fn push(&mut self, datum: Option<Datum>) {
-        self.0.push(datum);
-    }
-
-    /// Returns an iterator over a slice of Option<Datum>
-    pub fn iter(&self) -> Iter<Option<Datum>> {
-        self.0.iter()
+impl From<Vec<u8>> for Datum {
+    fn from(value: Vec<u8>) -> Self {
+        Self(value)
     }
 }
 
-impl Index<usize> for Datums {
-    type Output = Option<Datum>;
+impl Deref for Datum {
+    type Target = [u8];
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
     }
 }
 
-impl std::io::Write for Datums {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.push(Some(buf.to_vec()));
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
+/// An alias for a Option<Datum>.
+pub type NullableDatum = Option<Datum>;

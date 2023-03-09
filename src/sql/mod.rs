@@ -11,7 +11,7 @@ use crate::{
     executor::{Executor, TupleTable},
     planner::Plan,
     storage::BufferPool,
-    Datums, Oid,
+    NullableDatum, Oid,
 };
 use anyhow::{bail, Result};
 use encode::encode;
@@ -83,7 +83,7 @@ impl ConnectionExecutor {
                     &rel_name,
                 )?;
 
-                let mut heap_values = Datums::default();
+                let mut heap_values = Vec::new();
 
                 // Iterate over all rows on insert to write new tuples.
                 for row in &values.0 {
@@ -239,7 +239,7 @@ pub struct PGResult {
     pub desc: RowDescriptor,
 
     /// All values returned from a query.
-    pub tuples: Vec<Datums>,
+    pub tuples: Vec<Vec<NullableDatum>>,
 }
 
 impl From<TupleTable> for PGResult {

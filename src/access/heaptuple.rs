@@ -3,7 +3,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{catalog::pg_attribute::PgAttribute, sql::encode::Varlena, Datum, Datums};
+use crate::{catalog::pg_attribute::PgAttribute, sql::encode::Varlena, Datum, NullableDatum};
 
 /// Represents the size of a heap header tuple.
 pub const HEAP_TUPLE_HEADER_SIZE: usize = size_of::<HeapTupleHeaderFields>();
@@ -70,6 +70,9 @@ pub struct HeapTuple {
     pub header: HeapTupleHeader,
 
     /// Actual heap tuple data (header NOT included).
+    ///
+    // A raw list of bytes is used here so other componets can deserialize an
+    // entire tuple to a catalog struct.
     pub data: Vec<u8>,
 }
 
@@ -100,7 +103,7 @@ impl HeapTuple {
     ///
     /// The tuple desc attributes should be aligned with datum values index, wich
     /// means that values[i] should references tuple_desc.attrs[i].
-    pub fn from_datums(values: Datums, tuple_desc: &TupleDesc) -> Result<Self> {
+    pub fn from_datums(values: Vec<NullableDatum>, tuple_desc: &TupleDesc) -> Result<Self> {
         let mut heaptuple = Self::default();
         for (attrnum, datum) in values.iter().enumerate() {
             let attr = tuple_desc
@@ -199,7 +202,7 @@ impl HeapTuple {
 
                 // Return the varlena value if its the field that was fetched
                 if attr.attnum == attnum {
-                    return Ok(Some(varlena.v_data));
+                    return Ok(Some(Datum::from(varlena.v_data)));
                 }
 
                 // Otherwise, just sum the total size of varlena tuple field.
@@ -210,7 +213,7 @@ impl HeapTuple {
                 if self.attr_is_null(attr.attnum) {
                     return Ok(None);
                 }
-                return Ok(Some(self.data[off_start..off_end].to_vec()));
+                return Ok(Some(Datum::from(self.data[off_start..off_end].to_vec())));
             }
 
             off_start = off_end;

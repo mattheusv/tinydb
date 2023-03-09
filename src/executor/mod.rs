@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use crate::{
     access::heaptuple::{HeapTuple, TupleDesc},
     planner::{Plan, PlanNodeType},
-    Datums,
+    NullableDatum,
 };
 
 /// A plan tree executor. Contains function to execute each type of PlanNodeType.
@@ -33,7 +33,7 @@ impl Executor {
                 loop {
                     match self.fetch_next_tuple(&mut state.child)? {
                         Some(tuple) => {
-                            let mut slot = Datums::default();
+                            let mut slot = Vec::new();
 
                             for attr in &tuple_table.tuple_desc.attrs {
                                 // Use the tuple descriptor from projection state since
@@ -74,5 +74,5 @@ pub struct TupleTable {
 
     /// Per row attribute values. Each Datums store the all attributes of a single
     /// row on the same order from tuple_desc.attrs.
-    pub values: Vec<Datums>,
+    pub values: Vec<Vec<NullableDatum>>,
 }
