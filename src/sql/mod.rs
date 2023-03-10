@@ -15,7 +15,7 @@ use crate::{
 };
 use anyhow::{bail, Result};
 use encode::encode;
-use sqlparser::ast;
+use sqlparser::ast::{self, Expr, Value};
 use std::mem::size_of;
 
 pub mod encode;
@@ -87,46 +87,9 @@ impl ConnectionExecutor {
 
                 // Iterate over all rows on insert to write new tuples.
                 for row in &values.0 {
-                    // INSERT statement don't specify the columns
-                    if columns.len() == 0 {
-                        for attr in &tuple_desc.attrs {
-                            match row.get(attr.attnum - 1) {
-                                Some(value) => match value {
-                                    ast::Expr::Value(value) => {
-                                        encode(&mut heap_values, &value, attr)?;
-                                    }
-                                    _ => bail!(SQLError::Unsupported(value.to_string())),
-                                },
-                                None => heap_values.push(None),
-                            }
-                        }
-                    } else {
-                        if row.len() != columns.len() {
-                            bail!("INSERT has more expressions than target columns");
-                        }
-
-                        // Iterate over relation attrs and try to find the value that is being inserted
-                        // for each attr. If the value does not exists a NULL value should be inserted
-                        // on tuple header t_bits array.
-                        for attr in &tuple_desc.attrs {
-                            // TODO: Find a better way to lookup the attr value that is being inserted
-                            let index =
-                                columns.iter().position(|ident| ident.value == attr.attname);
-                            match index {
-                                Some(index) => {
-                                    let value = &row[index];
-                                    match value {
-                                        ast::Expr::Value(value) => {
-                                            encode(&mut heap_values, &value, attr)?;
-                                        }
-                                        _ => bail!(SQLError::Unsupported(value.to_string())),
-                                    }
-                                }
-                                None => {
-                                    heap_values.push(None);
-                                }
-                            }
-                        }
+                    let attr_values = tuple_values_from_insert_row(columns, row, &tuple_desc)?;
+                    for (attr, value) in attr_values.iter() {
+                        encode(&mut heap_values, value, attr)?;
                     }
                 }
 
@@ -200,6 +163,63 @@ impl ConnectionExecutor {
             _ => bail!("Not supported data type: {}", typ),
         }
     }
+}
+
+/// Return a Vector of tuples, wich each tuple contains a attribute and their respective value on a
+/// row from insert statetment.
+///
+/// The attribute and value returned is a reference on the given tuple desc attributes and vector
+/// of rows.
+fn tuple_values_from_insert_row<'a>(
+    columns: &Vec<ast::Ident>,
+    row: &'a Vec<Expr>,
+    tuple_desc: &'a TupleDesc,
+) -> Result<Vec<(&'a PgAttribute, &'a Value)>> {
+    let mut map = Vec::with_capacity(tuple_desc.attrs.len());
+
+    if columns.len() == 0 {
+        // INSERT statement don't specify the columns, so iterate over all attributes of the tuple
+        // and try to get the value on insert statment. If the value is not present, set the attr
+        // value to null.
+        for attr in &tuple_desc.attrs {
+            match row.get(attr.attnum - 1) {
+                Some(value) => match value {
+                    ast::Expr::Value(value) => {
+                        map.push((attr, value));
+                    }
+                    _ => bail!(SQLError::Unsupported(value.to_string())),
+                },
+                None => {
+                    map.push((attr, &Value::Null));
+                }
+            };
+        }
+    } else if row.len() != columns.len() {
+        bail!("INSERT has more expressions than target columns");
+    } else {
+        // Iterate over relation attrs and try to find the value that is being inserted for each
+        // attr. If the value does not exists on statment the value of attr is set to NULL
+        for attr in &tuple_desc.attrs {
+            // TODO: Find a better way to lookup the attr value that is being inserted
+            let index = columns.iter().position(|ident| ident.value == attr.attname);
+            match index {
+                Some(index) => {
+                    let value = &row[index];
+                    match value {
+                        ast::Expr::Value(value) => {
+                            map.push((attr, value));
+                        }
+                        _ => bail!(SQLError::Unsupported(value.to_string())),
+                    }
+                }
+                None => {
+                    map.push((attr, &Value::Null));
+                }
+            }
+        }
+    }
+
+    Ok(map)
 }
 
 /// Describe an attribute in a row.
