@@ -5,6 +5,7 @@ pub mod access;
 pub mod backend;
 pub mod catalog;
 pub mod cli;
+pub mod encoding;
 pub mod executor;
 pub mod initdb;
 pub mod lru;
